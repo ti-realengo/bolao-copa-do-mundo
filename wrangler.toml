@@ -1,0 +1,60 @@
+# Worker name. Forks should change this to a unique name (it becomes
+# part of the workers.dev URL). The CI/CD pipeline reads this to know
+# which worker to deploy to.
+name = "bolao-copa-do-mundo"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+# Use the wrapper at the repo root, which re-exports OpenNext's fetch
+# handler AND adds a scheduled() handler that pings the cron endpoints.
+# Pointing main directly at .open-next/worker.js drops the scheduled
+# handler — crons would fire but no-op silently, leaving jobs/results
+# never synced.
+main = "worker-entry.js"
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bolao-prod"
+database_id = "0e167078-436a-44fc-b79c-30f5d9a81031"
+migrations_dir = "drizzle"
+
+[[kv_namespaces]]
+binding = "NEXT_INC_CACHE_KV"
+id = "a585a77ba1cf4c4e82ccf4d3521995e0"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "bolao-files"
+
+[vars]
+DEFAULT_LOCALE = "pt-BR"
+TIMEZONE = "America/Sao_Paulo"
+
+# APP_URL is set per-deployment via the Cloudflare dashboard
+# (Workers & Pages → your-worker → Settings → Variables and Secrets).
+# This keeps the URL out of source control so forks/clones don't have
+# to edit this file.
+
+# Secrets — set via `wrangler secret put`:
+#   Required:
+#     SESSION_SECRET           # 32+ bytes random, signs the session cookie
+#     FOOTBALL_DATA_API_KEY    # api.football-data.org token
+#     CRON_SECRET              # bearer for /api/cron/* endpoints
+#   Optional (only needed if you want email notifications):
+#     RESEND_API_KEY           # if absent, emails are logged to the worker console
+#     RESEND_FROM_EMAIL        # ex: bolao@suaempresa.com.br
+#
+# First-time setup: deploy, then access /cadastro on the public URL.
+# The first account created becomes the superadmin and its email domain is
+# auto-added to the allowed_domains table — colleagues can sign up next.
+# No bootstrap env vars needed.
+
+[triggers]
+crons = [
+  "*/5 * * * *",   # sync-results during match days
+  "0 * * * *",     # reminders (hourly)
+  "0 23 * * *",    # daily recap at 23h UTC
+]

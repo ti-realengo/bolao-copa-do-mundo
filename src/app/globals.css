@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --brand-primary: 142 80% 36%;
+    --brand-primary-soft: 142 70% 92%;
+    --brand-secondary: 51 100% 50%;
+    --brand-accent: 222 95% 45%;
+    --brand-surface: 60 14% 98%;
+    --brand-surface-2: 60 11% 95%;
+    --brand-card: 0 0% 100%;
+    --brand-border: 60 11% 88%;
+    --brand-border-strong: 60 8% 78%;
+    --brand-text: 230 18% 8%;
+    --brand-text-muted: 226 7% 38%;
+    --brand-success: 142 71% 38%;
+    --brand-warning: 38 92% 50%;
+    --brand-danger: 0 78% 56%;
+  }
+
+  .dark {
+    --brand-primary: 145 88% 42%;
+    --brand-primary-soft: 145 60% 14%;
+    --brand-secondary: 51 100% 65%;
+    --brand-accent: 222 90% 62%;
+    --brand-surface: 222 16% 6%;
+    --brand-surface-2: 222 14% 9%;
+    --brand-card: 222 14% 11%;
+    --brand-border: 222 12% 17%;
+    --brand-border-strong: 222 10% 24%;
+    --brand-text: 60 18% 96%;
+    --brand-text-muted: 220 8% 62%;
+    --brand-success: 145 85% 45%;
+    --brand-warning: 38 95% 60%;
+    --brand-danger: 0 80% 65%;
+  }
+
+  body {
+    @apply bg-brand-surface text-brand-text font-sans antialiased;
+  }
+
+  /* Subtle scrollbar in dark mode */
+  .dark ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .dark ::-webkit-scrollbar-track {
+    background: hsl(var(--brand-surface));
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: hsl(var(--brand-border-strong));
+    border-radius: 6px;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--brand-text-muted));
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply rounded-2xl border border-brand-border bg-brand-card/95 backdrop-blur-sm;
+  }
+
+  .stadium-glow {
+    background:
+      radial-gradient(ellipse at 70% 0%, hsl(var(--brand-primary) / 0.18) 0%, transparent 55%),
+      radial-gradient(ellipse at 0% 100%, hsl(var(--brand-secondary) / 0.08) 0%, transparent 50%);
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors;
+  }
+}
