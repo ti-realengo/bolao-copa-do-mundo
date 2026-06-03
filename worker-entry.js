@@ -23,20 +23,34 @@ async function runScheduled(controller, env) {
     console.warn(`[scheduled] no route for cron ${controller.cron}`);
     return;
   }
+
   const url = `${env.APP_URL ?? ""}${path}`;
   const secret = env.CRON_SECRET ?? env.SESSION_SECRET;
   if (!secret) {
     console.error("[scheduled] CRON_SECRET/SESSION_SECRET missing");
     return;
   }
+
   const start = Date.now();
   try {
-    const res = await fetch(url, {
+    const request = new Request(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${secret}` },
     });
+
+    // Use service binding (env.SELF) to call own worker without
+    // hitting the public edge. This avoids Cloudflare error 1042
+    // ("subrequest depth limit") that happens when a worker fetches
+    // its own public URL. Falls back to regular fetch if SELF binding
+    // isn't configured.
+    const res = env.SELF
+      ? await env.SELF.fetch(request)
+      : await fetch(request);
+
     const body = await res.text();
-    console.log(`[scheduled] ${controller.cron} → ${path} ${res.status} (${Date.now() - start}ms): ${body.slice(0, 200)}`);
+    console.log(
+      `[scheduled] ${controller.cron} → ${path} ${res.status} (${Date.now() - start}ms): ${body.slice(0, 200)}`
+    );
   } catch (e) {
     console.error(`[scheduled] ${controller.cron} ERROR:`, e?.message ?? e);
   }
