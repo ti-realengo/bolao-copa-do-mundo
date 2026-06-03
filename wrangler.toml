@@ -2,8 +2,10 @@
 # part of the workers.dev URL). The CI/CD pipeline reads this to know
 # which worker to deploy to.
 name = "bolao-copa-do-mundo"
+
 compatibility_date = "2026-04-01"
 compatibility_flags = ["nodejs_compat"]
+
 # Use the wrapper at the repo root, which re-exports OpenNext's fetch
 # handler AND adds a scheduled() handler that pings the cron endpoints.
 # Pointing main directly at .open-next/worker.js drops the scheduled
@@ -29,16 +31,28 @@ id = "a585a77ba1cf4c4e82ccf4d3521995e0"
 binding = "FILES"
 bucket_name = "bolao-files"
 
+# Service binding to allow the scheduled() handler to call own routes
+# via env.SELF.fetch() instead of fetching the public URL.
+# Without this, self-fetches via APP_URL fail with Cloudflare error 1042
+# ("subrequest depth limit"), making all cron jobs no-op.
+[[services]]
+binding = "SELF"
+service = "bolao-copa-do-mundo"
+
 [vars]
 DEFAULT_LOCALE = "pt-BR"
 TIMEZONE = "America/Sao_Paulo"
+# APP_URL must be set here (not just in the dashboard) so that wrangler deploy
+# preserves it. If set only in the dashboard, deploys via CI/CD will wipe it.
+# Forks should update this to match their worker's URL.
+APP_URL = "https://bolao-copa-do-mundo.ti-8a6.workers.dev"
 
-# APP_URL is set per-deployment via the Cloudflare dashboard
-# (Workers & Pages → your-worker → Settings → Variables and Secrets).
-# This keeps the URL out of source control so forks/clones don't have
-# to edit this file.
+# Enable observability so logs from the scheduled() handler and routes
+# show up in the dashboard. Otherwise debugging cron issues is painful.
+[observability]
+enabled = true
 
-# Secrets — set via `wrangler secret put`:
+# Secrets — set via `wrangler secret put` or the dashboard:
 #   Required:
 #     SESSION_SECRET           # 32+ bytes random, signs the session cookie
 #     FOOTBALL_DATA_API_KEY    # api.football-data.org token
