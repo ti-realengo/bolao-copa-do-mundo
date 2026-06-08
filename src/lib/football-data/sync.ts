@@ -49,22 +49,55 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     }
   }
 
+  let teamsTouched = 0;
   for (const [externalId, t] of teamMap) {
-    const code = (t.tla && t.tla.trim().length > 0 ? t.tla : `T${externalId}`).toUpperCase();
-    const safeName = t.name && t.name.trim().length > 0 ? t.name : `Selecao ${externalId}`;
+    // Skip placeholder teams that Football-Data returns for not-yet-defined
+    // knockout fixtures (no tla, no proper name). Inserting them creates
+    // sentinel rows like TNULL/Selecao that later collide on UNIQUE(code).
+    const tlaTrim = t.tla?.trim() ?? "";
+    const nameTrim = t.name?.trim() ?? "";
+    if (!tlaTrim && !nameTrim) continue;
+
+    const code = (tlaTrim.length > 0 ? tlaTrim : `T${externalId}`).toUpperCase();
+    const safeName = nameTrim.length > 0 ? nameTrim : `Selecao ${externalId}`;
     const namePt = TEAM_NAMES_PT[code] ?? safeName;
     const nameEs = TEAM_NAMES_ES[code] ?? safeName;
 
-    const existing = await db.select().from(schema.teams).where(eq(schema.teams.externalId, externalId)).limit(1).then((r) => r[0]);
+    // Upsert by `code` (the UNIQUE constraint in the schema). The previous
+    // version looked up by externalId, which breaks when Football-Data
+    // renumbers IDs or introduces placeholders mid-tournament — the INSERT
+    // then collides on UNIQUE(code) and aborts the whole sync.
+    const existing = await db
+      .select()
+      .from(schema.teams)
+      .where(eq(schema.teams.code, code))
+      .limit(1)
+      .then((r) => r[0]);
+
     if (existing) {
-      await db.update(schema.teams).set({
-        code, namePt, nameEn: safeName, nameEs, flagUrl: t.crest, groupCode: t.group,
-      }).where(eq(schema.teams.externalId, externalId));
+      await db
+        .update(schema.teams)
+        .set({
+          externalId,
+          namePt,
+          nameEn: safeName,
+          nameEs,
+          flagUrl: t.crest,
+          groupCode: t.group,
+        })
+        .where(eq(schema.teams.code, code));
     } else {
       await db.insert(schema.teams).values({
-        externalId, code, namePt, nameEn: safeName, nameEs, flagUrl: t.crest, groupCode: t.group,
+        externalId,
+        code,
+        namePt,
+        nameEn: safeName,
+        nameEs,
+        flagUrl: t.crest,
+        groupCode: t.group,
       });
     }
+    teamsTouched++;
   }
 
   const teamRows = await db.select().from(schema.teams);
@@ -122,7 +155,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
   if (pointsRecomputed > 0) await refreshRankingsSnapshot();
 
   log.info("football-data.sync", {
-    teamsTouched: teamMap.size,
+    teamsTouched,
     matchesInserted: inserted,
     matchesUpdated: updated,
     pointsRecomputed,
@@ -130,7 +163,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
   });
 
   return {
-    teamsTouched: teamMap.size,
+    teamsTouched,
     matchesInserted: inserted,
     matchesUpdated: updated,
     pointsRecomputed,
