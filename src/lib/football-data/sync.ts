@@ -1,5 +1,4 @@
 import { db, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
 import { FootballDataClient, mapStage, mapStatus, groupCode } from "./client";
 import { computeMatchPoints, refreshRankingsSnapshot } from "@/lib/scoring/compute";
 import { log } from "@/lib/observability/logger";
@@ -63,45 +62,38 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     const namePt = TEAM_NAMES_PT[code] ?? safeName;
     const nameEs = TEAM_NAMES_ES[code] ?? safeName;
 
-    // Upsert by `code` (the UNIQUE constraint in the schema). The previous
-    // version looked up by externalId, which breaks when Football-Data
-    // renumbers IDs or introduces placeholders mid-tournament — the INSERT
-    // then collides on UNIQUE(code) and aborts the whole sync.
-    const existing = await db
-      .select()
-      .from(schema.teams)
-      .where(eq(schema.teams.code, code))
-      .limit(1)
-      .then((r) => r[0]);
-
-    if (existing) {
-      await db
-        .update(schema.teams)
-        .set({
-          externalId,
-          namePt,
-          nameEn: safeName,
-          nameEs,
-          flagUrl: t.crest,
-          groupCode: t.group,
-        })
-        .where(eq(schema.teams.code, code));
-    } else {
-      await db.insert(schema.teams).values({
+    // Atomic upsert by `code` (UNIQUE constraint). Avoids race condition
+    // where concurrent syncs both SELECT → neither finds the row → both
+    // INSERT → UNIQUE constraint failure aborts the whole sync.
+    await db.insert(schema.teams).values({
+      externalId,
+      code,
+      namePt,
+      nameEn: safeName,
+      nameEs,
+      flagUrl: t.crest,
+      groupCode: t.group,
+    }).onConflictDoUpdate({
+      target: schema.teams.code,
+      set: {
         externalId,
-        code,
         namePt,
         nameEn: safeName,
         nameEs,
         flagUrl: t.crest,
         groupCode: t.group,
-      });
-    }
+      },
+    });
     teamsTouched++;
   }
 
   const teamRows = await db.select().from(schema.teams);
   const teamByExternal = new Map(teamRows.filter((r) => r.externalId).map((r) => [r.externalId!, r.id]));
+
+  // Pre-fetch existing matches to track finish transitions without risking
+  // race-condition INSERT failures on the UNIQUE(external_id) constraint.
+  const existingMatches = await db.select().from(schema.matches);
+  const matchByExtId = new Map(existingMatches.map((r) => [r.externalId, r]));
 
   let inserted = 0;
   let updated = 0;
@@ -118,9 +110,9 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     const status = mapStatus(m.status);
     const grp = groupCode(m.group);
 
-    const existing = await db.select().from(schema.matches).where(eq(schema.matches.externalId, externalId)).limit(1).then((r) => r[0]);
-    const wasFinished = existing?.status === "finished";
+    const wasFinished = matchByExtId.get(externalId)?.status === "finished";
     const becomesFinished = status === "finished";
+    const existingId = matchByExtId.get(externalId)?.id;
 
     const fields = {
       stage,
@@ -139,16 +131,24 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
 
-    if (existing) {
-      await db.update(schema.matches).set(fields).where(eq(schema.matches.externalId, externalId));
+    // Atomic upsert by externalId (UNIQUE). Avoids race-condition where
+    // concurrent syncs both SELECT → neither finds the match → both
+    // INSERT → UNIQUE constraint failure aborts the whole sync.
+    await db.insert(schema.matches).values({ externalId, ...fields })
+      .onConflictDoUpdate({
+        target: schema.matches.externalId,
+        set: fields,
+      });
+
+    if (matchByExtId.has(externalId)) {
       updated++;
-      if (becomesFinished && !wasFinished) {
-        await computeMatchPoints(existing.id);
-        pointsRecomputed++;
-      }
     } else {
-      await db.insert(schema.matches).values({ externalId, ...fields });
       inserted++;
+    }
+
+    if (becomesFinished && !wasFinished && existingId) {
+      await computeMatchPoints(existingId);
+      pointsRecomputed++;
     }
   }
 
