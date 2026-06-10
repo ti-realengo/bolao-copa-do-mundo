@@ -26,13 +26,19 @@ const TEAM_NAMES_ES: Record<string, string> = {
   CZE: "República Checa", BIH: "Bosnia",
 };
 
-const BATCH_SIZE = 50;
+const MAX_VARS = 90;
 
 export interface SyncResult {
   teamsTouched: number;
   matchesInserted: number;
   matchesUpdated: number;
   pointsRecomputed: number;
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
 }
 
 export async function syncWorldCupFromFootballData(apiKey: string): Promise<SyncResult> {
@@ -51,13 +57,12 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     }
   }
 
-  // ── 1. Pre-load existing teams (1 query) ──
+  // ── 1. Pre-load existing teams ──
   const existingTeams = await db.select().from(schema.teams);
   const teamByCodeLocal = new Map(existingTeams.map((r) => [r.code, r]));
   const teamByExtIdLocal = new Map(existingTeams.filter((r) => r.externalId != null).map((r) => [r.externalId!, r]));
 
-  // ── 2. Resolve externalId conflicts: if another row holds our target
-  //    externalId under a different code, null it out in bulk (1 query) ──
+  // ── 2. Resolve externalId conflicts (chunked for D1 variable limit) ──
   const conflictIds: number[] = [];
   for (const [externalId, t] of teamMap) {
     const tlaTrim = t.tla?.trim() ?? "";
@@ -69,19 +74,11 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       conflictIds.push(holder.id);
     }
   }
-  if (conflictIds.length > 0) {
-    await db.update(schema.teams).set({ externalId: null }).where(inArray(schema.teams.id, conflictIds));
+  for (const ids of chunk(conflictIds, MAX_VARS)) {
+    await db.update(schema.teams).set({ externalId: null }).where(inArray(schema.teams.id, ids));
   }
 
-  // db is a Proxy that delegates to D1 at runtime on Cloudflare Workers.
-  // TypeScript sees BetterSQLite3Database (no batch method), but D1Database
-  // supports batch(). We cast to bypass the type check — batch only runs on D1.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const d1 = db as any;
-
-  // ── 3. Batch team upserts (1-2 round-trips instead of ~96) ──
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const teamUpserts: any[] = [];
+  // ── 3. Team upserts — run sequentially to stay under D1 variable limit ──
   let teamsTouched = 0;
   for (const [externalId, t] of teamMap) {
     const tlaTrim = t.tla?.trim() ?? "";
@@ -93,52 +90,45 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     const namePt = TEAM_NAMES_PT[code] ?? safeName;
     const nameEs = TEAM_NAMES_ES[code] ?? safeName;
 
-    teamUpserts.push(
-      db.insert(schema.teams).values({
+    await db.insert(schema.teams).values({
+      externalId,
+      code,
+      namePt,
+      nameEn: safeName,
+      nameEs,
+      flagUrl: t.crest,
+      groupCode: t.group,
+    }).onConflictDoUpdate({
+      target: schema.teams.code,
+      set: {
         externalId,
-        code,
         namePt,
         nameEn: safeName,
         nameEs,
         flagUrl: t.crest,
         groupCode: t.group,
-      }).onConflictDoUpdate({
-        target: schema.teams.code,
-        set: {
-          externalId,
-          namePt,
-          nameEn: safeName,
-          nameEs,
-          flagUrl: t.crest,
-          groupCode: t.group,
-        },
-      }),
-    );
+      },
+    });
     teamsTouched++;
   }
 
-  for (let i = 0; i < teamUpserts.length; i += BATCH_SIZE) {
-    await d1.batch(teamUpserts.slice(i, i + BATCH_SIZE));
-  }
-
-  // ── 4. Build teamByExternal from fresh data (1 query) ──
+  // ── 4. Build teamByExternal from fresh data ──
   const teamRows = await db.select().from(schema.teams);
   const teamByExternal = new Map(teamRows.filter((r) => r.externalId).map((r) => [r.externalId!, r.id]));
 
-  // ── 5. Pre-load only relevant matches for finish-transition tracking
-  //    (1 targeted query instead of SELECT ALL) ──
+  // ── 5. Pre-load relevant matches (chunked for D1 variable limit) ──
   const matchExtIds = data.matches.map((m) => String(m.id));
-  const existingMatches = matchExtIds.length > 0
-    ? await db.select().from(schema.matches).where(inArray(schema.matches.externalId, matchExtIds))
-    : [];
+  const existingMatches: typeof schema.matches.$inferSelect[] = [];
+  for (const ids of chunk(matchExtIds, MAX_VARS)) {
+    const rows = await db.select().from(schema.matches).where(inArray(schema.matches.externalId, ids));
+    existingMatches.push(...rows);
+  }
   const matchByExtId = new Map(existingMatches.map((r) => [r.externalId, r]));
 
-  // ── 6. Prepare match upserts ──
+  // ── 6. Match upserts — sequential to stay under D1 variable limit ──
   let inserted = 0;
   let updated = 0;
   const newlyFinishedIds: number[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const matchUpserts: any[] = [];
 
   for (const m of data.matches) {
     const externalId = String(m.id);
@@ -182,21 +172,14 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
 
-    matchUpserts.push(
-      db.insert(schema.matches).values({ externalId, ...fields })
-        .onConflictDoUpdate({
-          target: schema.matches.externalId,
-          set: fields,
-        }),
-    );
+    await db.insert(schema.matches).values({ externalId, ...fields })
+      .onConflictDoUpdate({
+        target: schema.matches.externalId,
+        set: fields,
+      });
   }
 
-  // ── 7. Batch match upserts (2-3 round-trips instead of ~104) ──
-  for (let i = 0; i < matchUpserts.length; i += BATCH_SIZE) {
-    await d1.batch(matchUpserts.slice(i, i + BATCH_SIZE));
-  }
-
-  // ── 8. Compute points for newly finished matches ──
+  // ── 7. Compute points for newly finished matches ──
   let pointsRecomputed = 0;
   for (const mid of newlyFinishedIds) {
     await computeMatchPoints(mid);
