@@ -1,5 +1,5 @@
 import { db, schema } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { FootballDataClient, mapStage, mapStatus, groupCode } from "./client";
 import { computeMatchPoints, refreshRankingsSnapshot } from "@/lib/scoring/compute";
 import { log } from "@/lib/observability/logger";
@@ -26,6 +26,8 @@ const TEAM_NAMES_ES: Record<string, string> = {
   CZE: "República Checa", BIH: "Bosnia",
 };
 
+const BATCH_SIZE = 50;
+
 export interface SyncResult {
   teamsTouched: number;
   matchesInserted: number;
@@ -49,14 +51,37 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     }
   }
 
-  // Pre-load all existing teams so we can resolve cross-constraint conflicts
-  // before upserting. Both `code` and `externalId` are UNIQUE — if a row
-  // already holds our target externalId under a different code, the INSERT
-  // would violate UNIQUE(external_id) even though ON CONFLICT targets code.
+  // ── 1. Pre-load existing teams (1 query) ──
   const existingTeams = await db.select().from(schema.teams);
   const teamByCodeLocal = new Map(existingTeams.map((r) => [r.code, r]));
   const teamByExtIdLocal = new Map(existingTeams.filter((r) => r.externalId != null).map((r) => [r.externalId!, r]));
 
+  // ── 2. Resolve externalId conflicts: if another row holds our target
+  //    externalId under a different code, null it out in bulk (1 query) ──
+  const conflictIds: number[] = [];
+  for (const [externalId, t] of teamMap) {
+    const tlaTrim = t.tla?.trim() ?? "";
+    const nameTrim = t.name?.trim() ?? "";
+    if (!tlaTrim && !nameTrim) continue;
+    const code = (tlaTrim.length > 0 ? tlaTrim : `T${externalId}`).toUpperCase();
+    const holder = teamByExtIdLocal.get(externalId);
+    if (holder && holder.code !== code) {
+      conflictIds.push(holder.id);
+    }
+  }
+  if (conflictIds.length > 0) {
+    await db.update(schema.teams).set({ externalId: null }).where(inArray(schema.teams.id, conflictIds));
+  }
+
+  // db is a Proxy that delegates to D1 at runtime on Cloudflare Workers.
+  // TypeScript sees BetterSQLite3Database (no batch method), but D1Database
+  // supports batch(). We cast to bypass the type check — batch only runs on D1.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d1 = db as any;
+
+  // ── 3. Batch team upserts (1-2 round-trips instead of ~96) ──
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const teamUpserts: any[] = [];
   let teamsTouched = 0;
   for (const [externalId, t] of teamMap) {
     const tlaTrim = t.tla?.trim() ?? "";
@@ -68,57 +93,52 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     const namePt = TEAM_NAMES_PT[code] ?? safeName;
     const nameEs = TEAM_NAMES_ES[code] ?? safeName;
 
-    // If another team row holds our target externalId under a different code,
-    // nullify that row's externalId first — otherwise the INSERT would violate
-    // UNIQUE(external_id) and ON CONFLICT(code) doesn't catch that.
-    const holder = teamByExtIdLocal.get(externalId);
-    if (holder && holder.code !== code) {
-      await db.update(schema.teams).set({ externalId: null }).where(eq(schema.teams.id, holder.id));
-      teamByExtIdLocal.delete(externalId);
-      // Also remove stale entry from code map if present
-      teamByCodeLocal.delete(holder.code);
-    }
-
-    // Atomic upsert by `code`. If the code already exists (common path during
-    // re-sync), UPDATE including the correct externalId. If it doesn't exist,
-    // INSERT. The externalId conflict was cleared above.
-    await db.insert(schema.teams).values({
-      externalId,
-      code,
-      namePt,
-      nameEn: safeName,
-      nameEs,
-      flagUrl: t.crest,
-      groupCode: t.group,
-    }).onConflictDoUpdate({
-      target: schema.teams.code,
-      set: {
+    teamUpserts.push(
+      db.insert(schema.teams).values({
         externalId,
+        code,
         namePt,
         nameEn: safeName,
         nameEs,
         flagUrl: t.crest,
         groupCode: t.group,
-      },
-    });
-
-    // Keep local maps in sync so later iterations see the upserted row
-    teamByCodeLocal.set(code, { id: holder?.id ?? teamByCodeLocal.get(code)?.id ?? 0, code, externalId, namePt, nameEn: safeName, nameEs, flagUrl: t.crest, groupCode: t.group });
-    teamByExtIdLocal.set(externalId, teamByCodeLocal.get(code)!);
+      }).onConflictDoUpdate({
+        target: schema.teams.code,
+        set: {
+          externalId,
+          namePt,
+          nameEn: safeName,
+          nameEs,
+          flagUrl: t.crest,
+          groupCode: t.group,
+        },
+      }),
+    );
     teamsTouched++;
   }
 
+  for (let i = 0; i < teamUpserts.length; i += BATCH_SIZE) {
+    await d1.batch(teamUpserts.slice(i, i + BATCH_SIZE));
+  }
+
+  // ── 4. Build teamByExternal from fresh data (1 query) ──
   const teamRows = await db.select().from(schema.teams);
   const teamByExternal = new Map(teamRows.filter((r) => r.externalId).map((r) => [r.externalId!, r.id]));
 
-  // Pre-fetch existing matches to track finish transitions without risking
-  // race-condition INSERT failures on the UNIQUE(external_id) constraint.
-  const existingMatches = await db.select().from(schema.matches);
+  // ── 5. Pre-load only relevant matches for finish-transition tracking
+  //    (1 targeted query instead of SELECT ALL) ──
+  const matchExtIds = data.matches.map((m) => String(m.id));
+  const existingMatches = matchExtIds.length > 0
+    ? await db.select().from(schema.matches).where(inArray(schema.matches.externalId, matchExtIds))
+    : [];
   const matchByExtId = new Map(existingMatches.map((r) => [r.externalId, r]));
 
+  // ── 6. Prepare match upserts ──
   let inserted = 0;
   let updated = 0;
-  let pointsRecomputed = 0;
+  const newlyFinishedIds: number[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const matchUpserts: any[] = [];
 
   for (const m of data.matches) {
     const externalId = String(m.id);
@@ -132,8 +152,18 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     const grp = groupCode(m.group);
 
     const wasFinished = matchByExtId.get(externalId)?.status === "finished";
-    const becomesFinished = status === "finished";
     const existingId = matchByExtId.get(externalId)?.id;
+    const becomesFinished = status === "finished";
+
+    if (matchByExtId.has(externalId)) {
+      updated++;
+    } else {
+      inserted++;
+    }
+
+    if (becomesFinished && !wasFinished && existingId) {
+      newlyFinishedIds.push(existingId);
+    }
 
     const fields = {
       stage,
@@ -152,25 +182,25 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
 
-    // Atomic upsert by externalId (UNIQUE). Avoids race-condition where
-    // concurrent syncs both SELECT → neither finds the match → both
-    // INSERT → UNIQUE constraint failure aborts the whole sync.
-    await db.insert(schema.matches).values({ externalId, ...fields })
-      .onConflictDoUpdate({
-        target: schema.matches.externalId,
-        set: fields,
-      });
+    matchUpserts.push(
+      db.insert(schema.matches).values({ externalId, ...fields })
+        .onConflictDoUpdate({
+          target: schema.matches.externalId,
+          set: fields,
+        }),
+    );
+  }
 
-    if (matchByExtId.has(externalId)) {
-      updated++;
-    } else {
-      inserted++;
-    }
+  // ── 7. Batch match upserts (2-3 round-trips instead of ~104) ──
+  for (let i = 0; i < matchUpserts.length; i += BATCH_SIZE) {
+    await d1.batch(matchUpserts.slice(i, i + BATCH_SIZE));
+  }
 
-    if (becomesFinished && !wasFinished && existingId) {
-      await computeMatchPoints(existingId);
-      pointsRecomputed++;
-    }
+  // ── 8. Compute points for newly finished matches ──
+  let pointsRecomputed = 0;
+  for (const mid of newlyFinishedIds) {
+    await computeMatchPoints(mid);
+    pointsRecomputed++;
   }
 
   if (pointsRecomputed > 0) await refreshRankingsSnapshot();
