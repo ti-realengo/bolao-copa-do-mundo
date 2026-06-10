@@ -5,6 +5,7 @@ import { eq, asc, isNull, and } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CommentsSection } from "./comments-section";
+import { brDateFormat } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +43,8 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
 
   const myComment = comments.find((c) => c.user.id === session.user.id) ?? null;
 
-  const dateFmt = new Intl.DateTimeFormat("pt-BR", {
+  const dateFmt = brDateFormat({
     weekday: "long", day: "2-digit", month: "long", hour: "2-digit", minute: "2-digit",
-    timeZone: "America/Sao_Paulo",
   });
 
   return (

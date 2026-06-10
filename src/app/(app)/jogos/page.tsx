@@ -9,6 +9,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { MatchCard } from "./match-card";
 import { GroupSelect } from "./group-select";
 import { cn } from "@/lib/utils";
+import { brDateKey, brDateFormat } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -69,17 +70,15 @@ export default async function JogosPage({ searchParams }: PageProps) {
 
   const groupedByDay = new Map<string, typeof rows>();
   for (const r of filtered) {
-    const date = new Date(r.match.scheduledAt * 1000);
-    const key = date.toISOString().slice(0, 10);
+    const key = brDateKey(r.match.scheduledAt);
     if (!groupedByDay.has(key)) groupedByDay.set(key, []);
     groupedByDay.get(key)!.push(r);
   }
 
-  const dayFormatter = new Intl.DateTimeFormat("pt-BR", {
+  const dayFormatter = brDateFormat({
     weekday: "long",
     day: "2-digit",
     month: "long",
-    timeZone: "America/Sao_Paulo",
   });
 
   const groupCodes = Array.from(
@@ -323,12 +322,11 @@ function UpcomingPredictionsWidget({
 }: {
   rows: { match: typeof schema.matches.$inferSelect; home: typeof schema.teams.$inferSelect | null; away: typeof schema.teams.$inferSelect | null }[];
 }) {
-  const dateFmt = new Intl.DateTimeFormat("pt-BR", {
+  const dateFmt = brDateFormat({
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "America/Sao_Paulo",
   });
   return (
     <div className="rounded-2xl border border-brand-border bg-brand-card p-5">

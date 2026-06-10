@@ -8,6 +8,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BADGES } from "@/lib/badges/catalog";
 import { getMessages, t as tFn } from "@/lib/i18n";
+import { brDateFormat } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -74,9 +75,8 @@ export default async function HomePage() {
     .where(eq(schema.predictions.userId, session.user.id))
     .then((r) => Number(r[0]?.c ?? 0));
 
-  const dateFmt = new Intl.DateTimeFormat("pt-BR", {
+  const dateFmt = brDateFormat({
     weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
-    timeZone: "America/Sao_Paulo",
   });
 
   return (

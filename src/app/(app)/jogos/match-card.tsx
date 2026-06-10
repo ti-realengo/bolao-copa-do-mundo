@@ -7,6 +7,7 @@ import { ArrowRight, Lock, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { savePrediction } from "./actions";
 import { cn } from "@/lib/utils";
+import { brDateFormat } from "@/lib/date";
 import type { Match, Team, Prediction } from "@/lib/db/schema";
 
 interface Props {
@@ -67,10 +68,9 @@ export function MatchCard({ match, home, away, prediction }: Props) {
     };
   }, [homeScore, awayScore, isLocked, match.id, prediction]);
 
-  const dateFmt = new Intl.DateTimeFormat("pt-BR", {
+  const dateFmt = brDateFormat({
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "America/Sao_Paulo",
   });
 
   return (

@@ -1,3 +1,5 @@
+import { brDateFormat } from "@/lib/date";
+
 interface Branding {
   appUrl: string;
   companyName: string;
@@ -36,7 +38,7 @@ export interface MatchSummary {
 
 export function reminderEmail(branding: Branding, name: string, matches: MatchSummary[]): { subject: string; html: string; text: string } {
   const subject = `${matches.length} jogo${matches.length > 1 ? "s" : ""} sem palpite`;
-  const fmt = new Intl.DateTimeFormat("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+  const fmt = brDateFormat({ weekday: "short", hour: "2-digit", minute: "2-digit" });
   const list = matches.map((m) => `
     <li style="padding:8px 0;border-bottom:1px solid #f0f0e8;">
       <strong>${m.homeName}</strong> × <strong>${m.awayName}</strong>
