@@ -1,4 +1,5 @@
 import { db, schema } from "@/lib/db";
+import { eq } from "drizzle-orm";
 import { FootballDataClient, mapStage, mapStatus, groupCode } from "./client";
 import { computeMatchPoints, refreshRankingsSnapshot } from "@/lib/scoring/compute";
 import { log } from "@/lib/observability/logger";
@@ -48,11 +49,16 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     }
   }
 
+  // Pre-load all existing teams so we can resolve cross-constraint conflicts
+  // before upserting. Both `code` and `externalId` are UNIQUE — if a row
+  // already holds our target externalId under a different code, the INSERT
+  // would violate UNIQUE(external_id) even though ON CONFLICT targets code.
+  const existingTeams = await db.select().from(schema.teams);
+  const teamByCodeLocal = new Map(existingTeams.map((r) => [r.code, r]));
+  const teamByExtIdLocal = new Map(existingTeams.filter((r) => r.externalId != null).map((r) => [r.externalId!, r]));
+
   let teamsTouched = 0;
   for (const [externalId, t] of teamMap) {
-    // Skip placeholder teams that Football-Data returns for not-yet-defined
-    // knockout fixtures (no tla, no proper name). Inserting them creates
-    // sentinel rows like TNULL/Selecao that later collide on UNIQUE(code).
     const tlaTrim = t.tla?.trim() ?? "";
     const nameTrim = t.name?.trim() ?? "";
     if (!tlaTrim && !nameTrim) continue;
@@ -62,9 +68,20 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     const namePt = TEAM_NAMES_PT[code] ?? safeName;
     const nameEs = TEAM_NAMES_ES[code] ?? safeName;
 
-    // Atomic upsert by `code` (UNIQUE constraint). Avoids race condition
-    // where concurrent syncs both SELECT → neither finds the row → both
-    // INSERT → UNIQUE constraint failure aborts the whole sync.
+    // If another team row holds our target externalId under a different code,
+    // nullify that row's externalId first — otherwise the INSERT would violate
+    // UNIQUE(external_id) and ON CONFLICT(code) doesn't catch that.
+    const holder = teamByExtIdLocal.get(externalId);
+    if (holder && holder.code !== code) {
+      await db.update(schema.teams).set({ externalId: null }).where(eq(schema.teams.id, holder.id));
+      teamByExtIdLocal.delete(externalId);
+      // Also remove stale entry from code map if present
+      teamByCodeLocal.delete(holder.code);
+    }
+
+    // Atomic upsert by `code`. If the code already exists (common path during
+    // re-sync), UPDATE including the correct externalId. If it doesn't exist,
+    // INSERT. The externalId conflict was cleared above.
     await db.insert(schema.teams).values({
       externalId,
       code,
@@ -84,6 +101,10 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
         groupCode: t.group,
       },
     });
+
+    // Keep local maps in sync so later iterations see the upserted row
+    teamByCodeLocal.set(code, { id: holder?.id ?? teamByCodeLocal.get(code)?.id ?? 0, code, externalId, namePt, nameEn: safeName, nameEs, flagUrl: t.crest, groupCode: t.group });
+    teamByExtIdLocal.set(externalId, teamByCodeLocal.get(code)!);
     teamsTouched++;
   }
 
