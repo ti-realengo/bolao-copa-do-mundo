@@ -91,7 +91,7 @@ export function AppHeader({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-brand-border bg-brand-surface/85 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-brand-border bg-brand-surface lg:bg-brand-surface/85 lg:backdrop-blur-md">
       <div className="flex items-center h-16 px-4 lg:px-6 gap-3">
         <button
           type="button"

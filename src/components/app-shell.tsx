@@ -67,7 +67,7 @@ export async function AppShell({ children, requireRole = "any" }: Props) {
           logoUrl={branding.logoUrl}
           logoutSlot={<LogoutButton />}
         />
-        <main className="flex-1 px-4 lg:px-6 py-6">{children}</main>
+        <main className="flex-1 px-4 lg:px-6 py-6 pt-20 lg:pt-6">{children}</main>
       </div>
       <InstallPwaBanner />
     </div>
