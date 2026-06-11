@@ -4,7 +4,7 @@ import { LayoutGrid, List, TrendingUp, ArrowRight } from "lucide-react";
 import { db, schema } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { MatchCard } from "./match-card";
 import { GroupSelect } from "./group-select";
@@ -94,9 +94,10 @@ export default async function JogosPage({ searchParams }: PageProps) {
     .then((r) => r[0]);
 
   const totalParticipants = await db
-    .select({ count: schema.users.id })
+    .select({ count: sql<number>`count(*)` })
     .from(schema.users)
-    .then((r) => r.length);
+    .where(and(eq(schema.users.role, "participant"), sql`${schema.users.deletedAt} is null`))
+    .then((r) => Number(r[0]?.count ?? 0));
 
   const correctPredictions = userPredictions.filter(
     (p) => p.points !== null && p.points !== undefined && p.points > 0,
@@ -212,7 +213,7 @@ export default async function JogosPage({ searchParams }: PageProps) {
         <PerformanceWidget
           position={ranking?.position ?? null}
           totalParticipants={totalParticipants}
-          totalPoints={(ranking?.totalPoints ?? 0) + (ranking?.specialPoints ?? 0)}
+          totalPoints={ranking?.totalPoints ?? 0}
           accuracy={accuracy}
         />
         <UpcomingPredictionsWidget rows={nextWithPredictions} />

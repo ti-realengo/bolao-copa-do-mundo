@@ -52,7 +52,7 @@ export default async function HomePage() {
   const top5 = await db
     .select({ user: schema.users, r: schema.rankingsSnapshot })
     .from(schema.rankingsSnapshot)
-    .innerJoin(schema.users, eq(schema.users.id, schema.rankingsSnapshot.userId))
+    .innerJoin(schema.users, and(eq(schema.users.id, schema.rankingsSnapshot.userId), sql`${schema.users.deletedAt} is null`))
     .orderBy(asc(schema.rankingsSnapshot.position))
     .limit(5);
 

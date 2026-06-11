@@ -1,7 +1,7 @@
 import { db, schema } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect, notFound } from "next/navigation";
-import { eq, and, asc, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { LeaveButton } from "./leave-button";
@@ -30,14 +30,22 @@ export default async function LeaguePage({ params }: { params: Promise<{ id: str
       user: schema.users,
       points: sql<number>`coalesce(${schema.rankingsSnapshot.totalPoints}, 0)`,
       exact: sql<number>`coalesce(${schema.rankingsSnapshot.exactCount}, 0)`,
+      winner: sql<number>`coalesce(${schema.rankingsSnapshot.winnerCount}, 0)`,
+      special: sql<number>`coalesce(${schema.rankingsSnapshot.specialPoints}, 0)`,
     })
     .from(schema.leagueMembers)
-    .innerJoin(schema.users, eq(schema.users.id, schema.leagueMembers.userId))
+    .innerJoin(schema.users, and(eq(schema.users.id, schema.leagueMembers.userId), sql`${schema.users.deletedAt} is null`))
     .leftJoin(schema.rankingsSnapshot, eq(schema.rankingsSnapshot.userId, schema.users.id))
     .where(eq(schema.leagueMembers.leagueId, id))
     .orderBy(asc(schema.leagueMembers.joinedAt));
 
-  ranking.sort((a, b) => Number(b.points) - Number(a.points) || Number(b.exact) - Number(a.exact));
+  ranking.sort((a, b) =>
+    Number(b.points) - Number(a.points) ||
+    Number(b.exact) - Number(a.exact) ||
+    Number(b.winner) - Number(a.winner) ||
+    Number(b.special) - Number(a.special) ||
+    (a.user.createdAt ?? 0) - (b.user.createdAt ?? 0)
+  );
 
   const isOwner = league.ownerId === session.user.id;
   const baseUrl = await getAppUrl();

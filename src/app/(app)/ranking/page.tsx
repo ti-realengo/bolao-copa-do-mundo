@@ -1,7 +1,7 @@
 import { db, schema } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { Card } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export default async function RankingPage() {
       user: schema.users,
     })
     .from(schema.rankingsSnapshot)
-    .innerJoin(schema.users, eq(schema.users.id, schema.rankingsSnapshot.userId))
+    .innerJoin(schema.users, and(eq(schema.users.id, schema.rankingsSnapshot.userId), sql`${schema.users.deletedAt} is null`))
     .orderBy(asc(schema.rankingsSnapshot.position))
     .limit(100);
 
