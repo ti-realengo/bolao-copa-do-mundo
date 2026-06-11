@@ -48,11 +48,11 @@ export default async function PalpitesEspeciaisPage() {
           <CardTitle className="text-base">Pontuação</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-brand-text-muted space-y-1">
-          <div>Campeão · 5 pts</div>
-          <div>Vice · 3 pts</div>
-          <div>3º lugar · 2 pts</div>
-          <div>Artilheiro · 3 pts</div>
-          <div>Primeira eliminada na fase de grupos · 2 pts</div>
+          <div>Campeão · 15 pts</div>
+          <div>Vice · 10 pts</div>
+          <div>3º lugar · 5 pts</div>
+          <div>Artilheiro · 7 pts</div>
+          <div>Primeira eliminada na fase de grupos · 3 pts</div>
           <div>Seleção surpresa (chega às quartas) · 3 pts</div>
         </CardContent>
       </Card>
