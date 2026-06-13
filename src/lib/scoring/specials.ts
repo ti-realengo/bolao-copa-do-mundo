@@ -1,6 +1,14 @@
-import { db, schema } from "@/lib/db";
+import { db, runBatch, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { DEFAULT_SCORING, loadScoringConfig, type ScoringConfig } from "./config";
+
+const BATCH_CHUNK = 50;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 export interface SpecialResults {
   championTeamId: number | null;
@@ -59,13 +67,25 @@ export function computeSpecialsForUser(
   return pts;
 }
 
-export async function recomputeAllSpecials(): Promise<number> {
+export async function recomputeAllSpecials(): Promise<Map<string, number>> {
   const results = await getSpecialResults();
   const config = await loadScoringConfig();
   const all = await db.select().from(schema.specialPredictions);
+
+  const computed: Map<string, number> = new Map();
   for (const p of all) {
     const pts = computeSpecialsForUser(p, results, config.specials);
-    await db.update(schema.specialPredictions).set({ points: pts }).where(eq(schema.specialPredictions.userId, p.userId));
+    computed.set(p.userId, pts);
   }
-  return all.length;
+
+  for (const batch of chunk(all, BATCH_CHUNK)) {
+    await runBatch(
+      batch.map((p) => {
+        const pts = computed.get(p.userId)!;
+        return db.update(schema.specialPredictions).set({ points: pts }).where(eq(schema.specialPredictions.userId, p.userId));
+      }),
+    );
+  }
+
+  return computed;
 }

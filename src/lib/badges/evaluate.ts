@@ -1,63 +1,86 @@
 import { db, schema } from "@/lib/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { BADGES } from "./catalog";
 
-async function alreadyHas(userId: string, badgeCode: string): Promise<boolean> {
-  const r = await db
-    .select()
-    .from(schema.achievements)
-    .where(and(eq(schema.achievements.userId, userId), eq(schema.achievements.badgeCode, badgeCode)))
-    .limit(1);
-  return r.length > 0;
-}
+const BATCH_CHUNK = 50;
 
-async function award(userId: string, badgeCode: string, matchId?: number) {
-  if (await alreadyHas(userId, badgeCode)) return false;
-  await db.insert(schema.achievements).values({
-    userId,
-    badgeCode,
-    unlockedAt: Math.floor(Date.now() / 1000),
-    matchId: matchId ?? null,
-  }).onConflictDoNothing();
-  return true;
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
 }
 
 export async function evaluateBadgesAfterMatch(matchId: number): Promise<number> {
   const match = await db.select().from(schema.matches).where(eq(schema.matches.id, matchId)).limit(1).then((r) => r[0]);
   if (!match || match.status !== "finished") return 0;
 
-  const home = match.homeTeamId ? await db.select().from(schema.teams).where(eq(schema.teams.id, match.homeTeamId)).limit(1).then((r) => r[0]) : null;
-  const away = match.awayTeamId ? await db.select().from(schema.teams).where(eq(schema.teams.id, match.awayTeamId)).limit(1).then((r) => r[0]) : null;
-  const isBrazil = home?.code === "BRA" || away?.code === "BRA";
+  const teamIds = [match.homeTeamId, match.awayTeamId].filter((id): id is number => id != null);
+  const teamRows = teamIds.length > 0
+    ? await db.select().from(schema.teams).where(inArray(schema.teams.id, teamIds))
+    : [];
+  const isBrazil = teamRows.some((t) => t.code === "BRA");
 
   const preds = await db.select().from(schema.predictions).where(eq(schema.predictions.matchId, matchId));
-  let awarded = 0;
+  if (preds.length === 0) return 0;
 
-  for (const p of preds) {
-    if (!p.isExact) continue;
-    const exactCount = await db
-      .select({ c: sql<number>`count(*)` })
+  const exactScorers = preds.filter((p) => p.isExact);
+  const uniqueUserIds = [...new Set(exactScorers.map((p) => p.userId))];
+
+  const existingBadges: { userId: string; badgeCode: string }[] = [];
+  if (uniqueUserIds.length > 0) {
+    for (const batch of chunk(uniqueUserIds, BATCH_CHUNK)) {
+      const rows = await db
+        .select({ userId: schema.achievements.userId, badgeCode: schema.achievements.badgeCode })
+        .from(schema.achievements)
+        .where(
+          and(
+            inArray(schema.achievements.userId, batch),
+            inArray(schema.achievements.badgeCode, [BADGES.tarologo.code, BADGES.cravou.code]),
+          ),
+        );
+      existingBadges.push(...rows);
+    }
+  }
+  const hasBadge = new Set(existingBadges.map((r) => `${r.userId}:${r.badgeCode}`));
+
+  let exactCountByUser: Map<string, number>;
+  if (uniqueUserIds.length > 0) {
+    const counts = await db
+      .select({ userId: schema.predictions.userId, c: sql<number>`count(*)` })
       .from(schema.predictions)
-      .where(and(eq(schema.predictions.userId, p.userId), eq(schema.predictions.isExact, 1)))
-      .then((r) => Number(r[0]?.c ?? 0));
-    if (exactCount >= 5 && (await award(p.userId, BADGES.tarologo.code, matchId))) awarded++;
-    if (isBrazil && (await award(p.userId, BADGES.cravou.code, matchId))) awarded++;
+      .where(and(inArray(schema.predictions.userId, uniqueUserIds), eq(schema.predictions.isExact, 1)))
+      .groupBy(schema.predictions.userId);
+    exactCountByUser = new Map(counts.map((r) => [r.userId, Number(r.c)]));
+  } else {
+    exactCountByUser = new Map();
+  }
+
+  const awards: { userId: string; badgeCode: string; unlockedAt: number; matchId: number }[] = [];
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const p of exactScorers) {
+    if (!hasBadge.has(`${p.userId}:${BADGES.tarologo.code}`)) {
+      const count = exactCountByUser.get(p.userId) ?? 0;
+      if (count >= 5) {
+        hasBadge.add(`${p.userId}:${BADGES.tarologo.code}`);
+        awards.push({ userId: p.userId, badgeCode: BADGES.tarologo.code, unlockedAt: now, matchId });
+      }
+    }
+    if (isBrazil && !hasBadge.has(`${p.userId}:${BADGES.cravou.code}`)) {
+      hasBadge.add(`${p.userId}:${BADGES.cravou.code}`);
+      awards.push({ userId: p.userId, badgeCode: BADGES.cravou.code, unlockedAt: now, matchId });
+    }
   }
 
   if (match.round != null && match.stage === "group") {
     const round = match.round;
-    const roundMatchIds = await db
-      .select({ id: schema.matches.id })
+    const roundMatches = await db
+      .select({ id: schema.matches.id, status: schema.matches.status })
       .from(schema.matches)
-      .where(and(eq(schema.matches.stage, "group"), eq(schema.matches.round, round), eq(schema.matches.status, "finished")));
-    const totalInRound = await db
-      .select({ c: sql<number>`count(*)` })
-      .from(schema.matches)
-      .where(and(eq(schema.matches.stage, "group"), eq(schema.matches.round, round)))
-      .then((r) => Number(r[0]?.c ?? 0));
-
-    if (totalInRound > 0 && roundMatchIds.length === totalInRound) {
-      const ids = roundMatchIds.map((m) => m.id);
+      .where(and(eq(schema.matches.stage, "group"), eq(schema.matches.round, round)));
+    const allFinished = roundMatches.every((m) => m.status === "finished");
+    if (allFinished && roundMatches.length > 0) {
+      const ids = roundMatches.map((m) => m.id);
       const stats = await db
         .select({
           userId: schema.predictions.userId,
@@ -65,18 +88,42 @@ export async function evaluateBadgesAfterMatch(matchId: number): Promise<number>
           zeros: sql<number>`sum(case when coalesce(${schema.predictions.points}, 0) = 0 then 1 else 0 end)`,
         })
         .from(schema.predictions)
-        .where(sql`${schema.predictions.matchId} in (${sql.raw(ids.join(","))})`)
+        .where(inArray(schema.predictions.matchId, ids))
         .groupBy(schema.predictions.userId);
 
-      for (const s of stats) {
-        if (Number(s.total) >= 3 && Number(s.total) === Number(s.zeros)) {
-          if (await award(s.userId, BADGES.zica.code)) awarded++;
+      const zicaUserIds = stats
+        .filter((s) => Number(s.total) >= 3 && Number(s.total) === Number(s.zeros))
+        .map((s) => s.userId);
+
+      if (zicaUserIds.length > 0) {
+        const existingZica = await db
+          .select({ userId: schema.achievements.userId })
+          .from(schema.achievements)
+          .where(
+            and(inArray(schema.achievements.userId, zicaUserIds), eq(schema.achievements.badgeCode, BADGES.zica.code)),
+          );
+        const hasZica = new Set(existingZica.map((r) => r.userId));
+        for (const uid of zicaUserIds) {
+          if (!hasZica.has(uid)) {
+            awards.push({ userId: uid, badgeCode: BADGES.zica.code, unlockedAt: now, matchId });
+          }
         }
       }
     }
   }
 
-  return awarded;
+  for (const batch of chunk(awards, BATCH_CHUNK)) {
+    await db.insert(schema.achievements).values(
+      batch.map((a) => ({
+        userId: a.userId,
+        badgeCode: a.badgeCode,
+        unlockedAt: a.unlockedAt,
+        matchId: a.matchId,
+      })),
+    ).onConflictDoNothing();
+  }
+
+  return awards.length;
 }
 
 export async function evaluateMadrugador(matchId: number, userId: string): Promise<boolean> {
@@ -94,12 +141,24 @@ export async function evaluateMadrugador(matchId: number, userId: string): Promi
   const firstPred = await db
     .select({ userId: schema.predictions.userId })
     .from(schema.predictions)
-    .where(sql`${schema.predictions.matchId} in (${sql.raw(ids.join(","))})`)
+    .where(inArray(schema.predictions.matchId, ids))
     .orderBy(schema.predictions.createdAt)
     .limit(1);
 
   if (firstPred[0]?.userId === userId) {
-    return await award(userId, BADGES.madrugador.code, matchId);
+    const existing = await db
+      .select()
+      .from(schema.achievements)
+      .where(and(eq(schema.achievements.userId, userId), eq(schema.achievements.badgeCode, BADGES.madrugador.code)))
+      .limit(1);
+    if (existing.length > 0) return false;
+    await db.insert(schema.achievements).values({
+      userId,
+      badgeCode: BADGES.madrugador.code,
+      unlockedAt: Math.floor(Date.now() / 1000),
+      matchId,
+    }).onConflictDoNothing();
+    return true;
   }
   return false;
 }

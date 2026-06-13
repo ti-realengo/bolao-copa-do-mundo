@@ -1,9 +1,17 @@
-import { db, schema } from "@/lib/db";
+import { db, runBatch, schema } from "@/lib/db";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { scorePrediction } from "./engine";
 import { recomputeAllSpecials } from "./specials";
 import { loadScoringConfig } from "./config";
 import { evaluateBadgesAfterMatch } from "@/lib/badges/evaluate";
+
+const BATCH_CHUNK = 50;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 export async function computeMatchPoints(matchId: number): Promise<number> {
   const match = await db.select().from(schema.matches).where(eq(schema.matches.id, matchId)).limit(1).then((r) => r[0]);
@@ -14,6 +22,8 @@ export async function computeMatchPoints(matchId: number): Promise<number> {
 
   const config = await loadScoringConfig();
   const preds = await db.select().from(schema.predictions).where(eq(schema.predictions.matchId, matchId));
+  if (preds.length === 0) return 0;
+
   const matchInfo = {
     homeScore: match.homeScore,
     awayScore: match.awayScore,
@@ -23,27 +33,33 @@ export async function computeMatchPoints(matchId: number): Promise<number> {
     winnerTeamId: match.winnerTeamId,
   };
 
-  let updated = 0;
-  for (const p of preds) {
+  const updatedAt = Math.floor(Date.now() / 1000);
+  const updates = preds.map((p) => {
     const r = scorePrediction(
       { homeScore: p.homeScore, awayScore: p.awayScore, advancingTeamId: p.advancingTeamId },
       matchInfo,
       { exact: config.exact, winnerOrDraw: config.winnerOrDraw, knockoutAdvancingBonus: config.knockoutAdvancingBonus },
     );
-    await db.update(schema.predictions).set({
-      points: r.points,
-      isExact: r.isExact ? 1 : 0,
-      isWinnerCorrect: r.isWinnerCorrect ? 1 : 0,
-      updatedAt: Math.floor(Date.now() / 1000),
-    }).where(eq(schema.predictions.id, p.id));
-    updated++;
+    return { id: p.id, points: r.points, isExact: r.isExact ? 1 : 0, isWinnerCorrect: r.isWinnerCorrect ? 1 : 0 };
+  });
+
+  for (const batch of chunk(updates, BATCH_CHUNK)) {
+    await runBatch(
+      batch.map((u) =>
+        db
+          .update(schema.predictions)
+          .set({ points: u.points, isExact: u.isExact, isWinnerCorrect: u.isWinnerCorrect, updatedAt })
+          .where(eq(schema.predictions.id, u.id)),
+      ),
+    );
   }
+
   await evaluateBadgesAfterMatch(matchId);
-  return updated;
+  return updates.length;
 }
 
 export async function refreshRankingsSnapshot(): Promise<number> {
-  await recomputeAllSpecials();
+  const specialsMap = await recomputeAllSpecials();
   const now = Math.floor(Date.now() / 1000);
   const previous = await db.select().from(schema.rankingsSnapshot);
   const previousPositionByUser = new Map(previous.map((r) => [r.userId, r.position]));
@@ -59,36 +75,28 @@ export async function refreshRankingsSnapshot(): Promise<number> {
     .where(isNotNull(schema.predictions.points))
     .groupBy(schema.predictions.userId);
 
-  const specialPts = await db
-    .select({ userId: schema.specialPredictions.userId, points: schema.specialPredictions.points })
-    .from(schema.specialPredictions);
-  const specialByUser = new Map(specialPts.map((r) => [r.userId, r.points ?? 0]));
+  const aggregatesByUser = new Map(aggregates.map((a) => [a.userId, a]));
 
   const allUsers = await db
     .select({ id: schema.users.id, createdAt: schema.users.createdAt })
     .from(schema.users)
     .where(and(eq(schema.users.role, "participant"), sql`${schema.users.deletedAt} is null`));
 
-  const map = new Map<string, { total: number; exact: number; winner: number; special: number; createdAt: number }>();
-  for (const u of allUsers) {
-    map.set(u.id, { total: 0, exact: 0, winner: 0, special: specialByUser.get(u.id) ?? 0, createdAt: u.createdAt });
-  }
-  for (const a of aggregates) {
-    const cur = map.get(a.userId);
-    if (!cur) continue;
-    cur.total = Number(a.total);
-    cur.exact = Number(a.exact);
-    cur.winner = Number(a.winner);
-  }
-
-  const entries = Array.from(map.entries()).map(([userId, v]) => ({
-    userId,
-    totalPoints: v.total + v.special,
-    exactCount: v.exact,
-    winnerCount: v.winner,
-    specialPoints: v.special,
-    createdAt: v.createdAt,
-  }));
+  const entries = allUsers.map((u) => {
+    const a = aggregatesByUser.get(u.id);
+    const special = specialsMap.get(u.id) ?? 0;
+    const total = Number(a?.total ?? 0) + special;
+    const exact = Number(a?.exact ?? 0);
+    const winner = Number(a?.winner ?? 0);
+    return {
+      userId: u.id,
+      totalPoints: total,
+      exactCount: exact,
+      winnerCount: winner,
+      specialPoints: special,
+      createdAt: u.createdAt,
+    };
+  });
 
   entries.sort((a, b) => {
     if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
@@ -98,21 +106,30 @@ export async function refreshRankingsSnapshot(): Promise<number> {
     return a.createdAt - b.createdAt;
   });
 
+  const ranked = entries.map((e, idx) => ({
+    ...e,
+    position: idx + 1,
+    positionChange: previousPositionByUser.has(e.userId)
+      ? (previousPositionByUser.get(e.userId)! - (idx + 1))
+      : null,
+  }));
+
   await db.delete(schema.rankingsSnapshot);
-  let position = 0;
-  for (const e of entries) {
-    position++;
-    const prev = previousPositionByUser.get(e.userId) ?? null;
-    await db.insert(schema.rankingsSnapshot).values({
-      userId: e.userId,
-      totalPoints: e.totalPoints,
-      exactCount: e.exactCount,
-      winnerCount: e.winnerCount,
-      specialPoints: e.specialPoints,
-      position,
-      positionChange: prev != null ? prev - position : null,
-      updatedAt: now,
-    });
+
+  for (const batch of chunk(ranked, BATCH_CHUNK)) {
+    await db.insert(schema.rankingsSnapshot).values(
+      batch.map((e) => ({
+        userId: e.userId,
+        totalPoints: e.totalPoints,
+        exactCount: e.exactCount,
+        winnerCount: e.winnerCount,
+        specialPoints: e.specialPoints,
+        position: e.position,
+        positionChange: e.positionChange,
+        updatedAt: now,
+      })),
+    );
   }
+
   return entries.length;
 }

@@ -1,4 +1,4 @@
-import { db, schema } from "@/lib/db";
+import { db, runBatch, schema } from "@/lib/db";
 import { eq, inArray } from "drizzle-orm";
 import { FootballDataClient, mapStage, mapStatus, groupCode } from "./client";
 import { computeMatchPoints, refreshRankingsSnapshot } from "@/lib/scoring/compute";
@@ -59,7 +59,6 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
 
   // ── 1. Pre-load existing teams ──
   const existingTeams = await db.select().from(schema.teams);
-  const teamByCodeLocal = new Map(existingTeams.map((r) => [r.code, r]));
   const teamByExtIdLocal = new Map(existingTeams.filter((r) => r.externalId != null).map((r) => [r.externalId!, r]));
 
   // ── 2. Resolve externalId conflicts (chunked for D1 variable limit) ──
@@ -78,38 +77,33 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     await db.update(schema.teams).set({ externalId: null }).where(inArray(schema.teams.id, ids));
   }
 
-  // ── 3. Team upserts — run sequentially to stay under D1 variable limit ──
-  let teamsTouched = 0;
+  // ── 3. Team upserts — batched via runBatch() ──
+  const teamValues: { externalId: number; code: string; namePt: string; nameEn: string; nameEs: string; flagUrl: string | null; groupCode: string | null }[] = [];
   for (const [externalId, t] of teamMap) {
     const tlaTrim = t.tla?.trim() ?? "";
     const nameTrim = t.name?.trim() ?? "";
     if (!tlaTrim && !nameTrim) continue;
-
     const code = (tlaTrim.length > 0 ? tlaTrim : `T${externalId}`).toUpperCase();
     const safeName = nameTrim.length > 0 ? nameTrim : `Selecao ${externalId}`;
-    const namePt = TEAM_NAMES_PT[code] ?? safeName;
-    const nameEs = TEAM_NAMES_ES[code] ?? safeName;
-
-    await db.insert(schema.teams).values({
+    teamValues.push({
       externalId,
       code,
-      namePt,
+      namePt: TEAM_NAMES_PT[code] ?? safeName,
       nameEn: safeName,
-      nameEs,
+      nameEs: TEAM_NAMES_ES[code] ?? safeName,
       flagUrl: t.crest,
       groupCode: t.group,
-    }).onConflictDoUpdate({
-      target: schema.teams.code,
-      set: {
-        externalId,
-        namePt,
-        nameEn: safeName,
-        nameEs,
-        flagUrl: t.crest,
-        groupCode: t.group,
-      },
     });
-    teamsTouched++;
+  }
+  for (const batch of chunk(teamValues, 25)) {
+    await runBatch(
+      batch.map((tv) =>
+        db.insert(schema.teams).values(tv).onConflictDoUpdate({
+          target: schema.teams.code,
+          set: { externalId: tv.externalId, namePt: tv.namePt, nameEn: tv.nameEn, nameEs: tv.nameEs, flagUrl: tv.flagUrl, groupCode: tv.groupCode },
+        }),
+      ),
+    );
   }
 
   // ── 4. Build teamByExternal from fresh data ──
@@ -125,11 +119,12 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
   }
   const matchByExtId = new Map(existingMatches.map((r) => [r.externalId, r]));
 
-  // ── 6. Match upserts — sequential to stay under D1 variable limit ──
+  // ── 6. Match upserts — batched via runBatch() ──
   let inserted = 0;
   let updated = 0;
   const newlyFinishedIds: number[] = [];
 
+  const matchOps: (typeof schema.matches.$inferInsert)[] = [];
   for (const m of data.matches) {
     const externalId = String(m.id);
     const homeId = teamByExternal.get(m.homeTeam.id);
@@ -156,6 +151,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     }
 
     const fields = {
+      externalId,
       stage,
       groupCode: grp,
       round: stage === "group" ? m.matchday : null,
@@ -172,11 +168,33 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
 
-    await db.insert(schema.matches).values({ externalId, ...fields })
-      .onConflictDoUpdate({
-        target: schema.matches.externalId,
-        set: fields,
-      });
+    matchOps.push(fields);
+  }
+
+  for (const batch of chunk(matchOps, 25)) {
+    await runBatch(
+      batch.map((fields) =>
+        db.insert(schema.matches).values(fields).onConflictDoUpdate({
+          target: schema.matches.externalId,
+          set: {
+            stage: fields.stage,
+            groupCode: fields.groupCode,
+            round: fields.round,
+            homeTeamId: fields.homeTeamId,
+            awayTeamId: fields.awayTeamId,
+            scheduledAt: fields.scheduledAt,
+            status: fields.status,
+            homeScore: fields.homeScore,
+            awayScore: fields.awayScore,
+            homeScoreEt: fields.homeScoreEt,
+            awayScoreEt: fields.awayScoreEt,
+            homeScorePen: fields.homeScorePen,
+            awayScorePen: fields.awayScorePen,
+            finishedAt: fields.finishedAt,
+          },
+        }),
+      ),
+    );
   }
 
   // ── 7. Compute points for newly finished matches ──
@@ -189,7 +207,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
   if (pointsRecomputed > 0) await refreshRankingsSnapshot();
 
   log.info("football-data.sync", {
-    teamsTouched,
+    teamsTouched: teamValues.length,
     matchesInserted: inserted,
     matchesUpdated: updated,
     pointsRecomputed,
@@ -197,7 +215,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
   });
 
   return {
-    teamsTouched,
+    teamsTouched: teamValues.length,
     matchesInserted: inserted,
     matchesUpdated: updated,
     pointsRecomputed,

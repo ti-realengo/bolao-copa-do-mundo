@@ -63,3 +63,18 @@ export const db: DbInstance = new Proxy({} as DbInstance, {
     return Reflect.get(getDb() as object, prop, receiver);
   },
 }) as DbInstance;
+
+// Runs multiple Drizzle queries in a single D1 batch round-trip when on Workers,
+// or sequentially when running locally with better-sqlite3.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function runBatch(queries: any[]): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const instance = getDb() as any;
+  if (typeof instance.batch === "function") {
+    await instance.batch(queries);
+  } else {
+    for (const q of queries) {
+      await q;
+    }
+  }
+}
