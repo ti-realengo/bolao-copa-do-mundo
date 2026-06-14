@@ -16,9 +16,6 @@ type DbInstance = ReturnType<typeof import("drizzle-orm/better-sqlite3").drizzle
 function shouldUseD1(): boolean {
   if (process.env.DB_DRIVER === "d1") return true;
   if (typeof process !== "undefined" && process.env.NEXT_RUNTIME === "edge") return true;
-  // workerd (Cloudflare Workers runtime, used by OpenNext) exposes WebSocketPair
-  // as a global. Node.js does not. This lets us auto-pick D1 in production CF
-  // deploys without needing the operator to set DB_DRIVER manually.
   if (typeof (globalThis as { WebSocketPair?: unknown }).WebSocketPair !== "undefined") return true;
   return false;
 }
@@ -68,10 +65,18 @@ export const db: DbInstance = new Proxy({} as DbInstance, {
 // or sequentially when running locally with better-sqlite3.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function runBatch(queries: any[]): Promise<void> {
+  if (queries.length === 0) return;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const instance = getDb() as any;
   if (typeof instance.batch === "function") {
-    await instance.batch(queries);
+    try {
+      await instance.batch(queries);
+    } catch (e) {
+      console.error(`[runBatch] D1 batch failed (${queries.length} queries), falling back to sequential:`, e instanceof Error ? e.message : e);
+      for (const q of queries) {
+        await q;
+      }
+    }
   } else {
     for (const q of queries) {
       await q;

@@ -4,6 +4,7 @@ import { scorePrediction } from "./engine";
 import { recomputeAllSpecials } from "./specials";
 import { loadScoringConfig } from "./config";
 import { evaluateBadgesAfterMatch } from "@/lib/badges/evaluate";
+import { log } from "@/lib/observability/logger";
 
 const BATCH_CHUNK = 50;
 
@@ -43,6 +44,8 @@ export async function computeMatchPoints(matchId: number): Promise<number> {
     return { id: p.id, points: r.points, isExact: r.isExact ? 1 : 0, isWinnerCorrect: r.isWinnerCorrect ? 1 : 0 };
   });
 
+  log.info("scoring.computeMatchPoints", { matchId, predictionCount: updates.length });
+
   for (const batch of chunk(updates, BATCH_CHUNK)) {
     await runBatch(
       batch.map((u) =>
@@ -59,6 +62,8 @@ export async function computeMatchPoints(matchId: number): Promise<number> {
 }
 
 export async function refreshRankingsSnapshot(): Promise<number> {
+  log.info("scoring.refreshRankingsSnapshot.start");
+
   const specialsMap = await recomputeAllSpecials();
   const now = Math.floor(Date.now() / 1000);
   const previous = await db.select().from(schema.rankingsSnapshot);
@@ -116,20 +121,25 @@ export async function refreshRankingsSnapshot(): Promise<number> {
 
   await db.delete(schema.rankingsSnapshot);
 
+  // Use runBatch with individual INSERTs to avoid D1's ~100 bind-variable limit
+  // per statement (multi-row INSERT with 50 rows × 8 cols = 400 variables would fail).
   for (const batch of chunk(ranked, BATCH_CHUNK)) {
-    await db.insert(schema.rankingsSnapshot).values(
-      batch.map((e) => ({
-        userId: e.userId,
-        totalPoints: e.totalPoints,
-        exactCount: e.exactCount,
-        winnerCount: e.winnerCount,
-        specialPoints: e.specialPoints,
-        position: e.position,
-        positionChange: e.positionChange,
-        updatedAt: now,
-      })),
+    await runBatch(
+      batch.map((e) =>
+        db.insert(schema.rankingsSnapshot).values({
+          userId: e.userId,
+          totalPoints: e.totalPoints,
+          exactCount: e.exactCount,
+          winnerCount: e.winnerCount,
+          specialPoints: e.specialPoints,
+          position: e.position,
+          positionChange: e.positionChange,
+          updatedAt: now,
+        }),
+      ),
     );
   }
 
+  log.info("scoring.refreshRankingsSnapshot.done", { userCount: entries.length });
   return entries.length;
 }

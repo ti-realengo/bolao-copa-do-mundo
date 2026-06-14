@@ -1,6 +1,7 @@
-import { db, schema } from "@/lib/db";
+import { db, runBatch, schema } from "@/lib/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { BADGES } from "./catalog";
+import { log } from "@/lib/observability/logger";
 
 const BATCH_CHUNK = 50;
 
@@ -112,15 +113,23 @@ export async function evaluateBadgesAfterMatch(matchId: number): Promise<number>
     }
   }
 
+  // Use runBatch with individual INSERTs to avoid D1 bind-variable limit
+  // (multi-row INSERT with 50 rows × 4 cols = 200 variables would exceed D1's ~100 limit).
   for (const batch of chunk(awards, BATCH_CHUNK)) {
-    await db.insert(schema.achievements).values(
-      batch.map((a) => ({
-        userId: a.userId,
-        badgeCode: a.badgeCode,
-        unlockedAt: a.unlockedAt,
-        matchId: a.matchId,
-      })),
-    ).onConflictDoNothing();
+    await runBatch(
+      batch.map((a) =>
+        db.insert(schema.achievements).values({
+          userId: a.userId,
+          badgeCode: a.badgeCode,
+          unlockedAt: a.unlockedAt,
+          matchId: a.matchId,
+        }).onConflictDoNothing(),
+      ),
+    );
+  }
+
+  if (awards.length > 0) {
+    log.info("badges.evaluateAfterMatch", { matchId, awarded: awards.length });
   }
 
   return awards.length;

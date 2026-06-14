@@ -1,6 +1,7 @@
 import { db, runBatch, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { DEFAULT_SCORING, loadScoringConfig, type ScoringConfig } from "./config";
+import { log } from "@/lib/observability/logger";
 
 const BATCH_CHUNK = 50;
 
@@ -68,6 +69,7 @@ export function computeSpecialsForUser(
 }
 
 export async function recomputeAllSpecials(): Promise<Map<string, number>> {
+  log.info("scoring.recomputeAllSpecials.start");
   const results = await getSpecialResults();
   const config = await loadScoringConfig();
   const all = await db.select().from(schema.specialPredictions);
@@ -87,5 +89,6 @@ export async function recomputeAllSpecials(): Promise<Map<string, number>> {
     );
   }
 
+  log.info("scoring.recomputeAllSpecials.done", { userCount: all.length });
   return computed;
 }
