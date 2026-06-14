@@ -29,7 +29,7 @@ export async function saveSpecialResults(input: unknown): Promise<{ ok: boolean;
     set: { value, updatedAt: now },
   });
 
-  const usersScored = await refreshRankingsSnapshot();
+  const usersScored = await refreshRankingsSnapshot({ recomputeSpecials: true });
   await logAudit(session.user.id, "admin.special_results.update", null, { usersScored });
   return { ok: true, message: `${usersScored} usuários no ranking` };
 }

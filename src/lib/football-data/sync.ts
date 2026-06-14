@@ -41,6 +41,30 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+// True when any persisted match column differs from the incoming data.
+// Lets the sync skip writes for the (common) case where nothing changed.
+function matchChanged(
+  prev: typeof schema.matches.$inferSelect,
+  next: typeof schema.matches.$inferInsert,
+): boolean {
+  return (
+    prev.stage !== next.stage ||
+    prev.groupCode !== next.groupCode ||
+    prev.round !== next.round ||
+    prev.homeTeamId !== next.homeTeamId ||
+    prev.awayTeamId !== next.awayTeamId ||
+    prev.scheduledAt !== next.scheduledAt ||
+    prev.status !== next.status ||
+    prev.homeScore !== next.homeScore ||
+    prev.awayScore !== next.awayScore ||
+    prev.homeScoreEt !== next.homeScoreEt ||
+    prev.awayScoreEt !== next.awayScoreEt ||
+    prev.homeScorePen !== next.homeScorePen ||
+    prev.awayScorePen !== next.awayScorePen ||
+    prev.finishedAt !== next.finishedAt
+  );
+}
+
 export async function syncWorldCupFromFootballData(apiKey: string): Promise<SyncResult> {
   const startedAt = Date.now();
   const fd = new FootballDataClient(apiKey);
@@ -60,6 +84,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
   // ── 1. Pre-load existing teams ──
   const existingTeams = await db.select().from(schema.teams);
   const teamByExtIdLocal = new Map(existingTeams.filter((r) => r.externalId != null).map((r) => [r.externalId!, r]));
+  const existingTeamByCode = new Map(existingTeams.map((r) => [r.code, r]));
 
   // ── 2. Resolve externalId conflicts (chunked for D1 variable limit) ──
   const conflictIds: number[] = [];
@@ -85,7 +110,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     if (!tlaTrim && !nameTrim) continue;
     const code = (tlaTrim.length > 0 ? tlaTrim : `T${externalId}`).toUpperCase();
     const safeName = nameTrim.length > 0 ? nameTrim : `Selecao ${externalId}`;
-    teamValues.push({
+    const tv = {
       externalId,
       code,
       namePt: TEAM_NAMES_PT[code] ?? safeName,
@@ -93,7 +118,22 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       nameEs: TEAM_NAMES_ES[code] ?? safeName,
       flagUrl: t.crest,
       groupCode: t.group,
-    });
+    };
+    // Skip the upsert when the stored row already matches — avoids writing all
+    // ~48 teams (and building ~48 Drizzle statements) on every run.
+    const prev = existingTeamByCode.get(code);
+    if (
+      prev &&
+      prev.externalId === tv.externalId &&
+      prev.namePt === tv.namePt &&
+      prev.nameEn === tv.nameEn &&
+      prev.nameEs === tv.nameEs &&
+      prev.flagUrl === tv.flagUrl &&
+      prev.groupCode === tv.groupCode
+    ) {
+      continue;
+    }
+    teamValues.push(tv);
   }
   for (const batch of chunk(teamValues, 25)) {
     await runBatch(
@@ -106,9 +146,23 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     );
   }
 
-  // ── 4. Build teamByExternal from fresh data ──
-  const teamRows = await db.select().from(schema.teams);
-  const teamByExternal = new Map(teamRows.filter((r) => r.externalId).map((r) => [r.externalId!, r.id]));
+  // ── 4. Build teamByExternal (externalId → local id) ──
+  // Start from the rows already loaded in step 1, then refresh only the codes
+  // we just wrote. Avoids a full-table scan on every run (the common case where
+  // nothing changed does zero extra queries).
+  const teamByExternal = new Map<number, number>();
+  for (const r of existingTeams) {
+    if (r.externalId != null) teamByExternal.set(r.externalId, r.id);
+  }
+  if (teamValues.length > 0) {
+    const writtenCodes = teamValues.map((tv) => tv.code);
+    for (const codes of chunk(writtenCodes, MAX_VARS)) {
+      const rows = await db.select().from(schema.teams).where(inArray(schema.teams.code, codes));
+      for (const r of rows) {
+        if (r.externalId != null) teamByExternal.set(r.externalId, r.id);
+      }
+    }
+  }
 
   // ── 5. Pre-load relevant matches (chunked for D1 variable limit) ──
   const matchExtIds = data.matches.map((m) => String(m.id));
@@ -131,33 +185,17 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     const awayId = teamByExternal.get(m.awayTeam.id);
     if (!homeId || !awayId) continue;
 
-    const scheduledAt = Math.floor(new Date(m.utcDate).getTime() / 1000);
     const stage = mapStage(m.stage);
     const status = mapStatus(m.status);
-    const grp = groupCode(m.group);
-
-    const wasFinished = matchByExtId.get(externalId)?.status === "finished";
-    const existingId = matchByExtId.get(externalId)?.id;
-    const becomesFinished = status === "finished";
-
-    if (matchByExtId.has(externalId)) {
-      updated++;
-    } else {
-      inserted++;
-    }
-
-    if (becomesFinished && !wasFinished && existingId) {
-      newlyFinishedIds.push(existingId);
-    }
 
     const fields = {
       externalId,
       stage,
-      groupCode: grp,
+      groupCode: groupCode(m.group),
       round: stage === "group" ? m.matchday : null,
       homeTeamId: homeId,
       awayTeamId: awayId,
-      scheduledAt,
+      scheduledAt: Math.floor(new Date(m.utcDate).getTime() / 1000),
       status,
       homeScore: m.score.fullTime.home,
       awayScore: m.score.fullTime.away,
@@ -168,7 +206,21 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
 
-    matchOps.push(fields);
+    const existing = matchByExtId.get(externalId);
+
+    // Detect newly-finished matches (regardless of whether we write them).
+    if (existing && status === "finished" && existing.status !== "finished") {
+      newlyFinishedIds.push(existing.id);
+    }
+
+    // Only write when new or actually changed — most runs touch nothing.
+    if (!existing) {
+      inserted++;
+      matchOps.push(fields);
+    } else if (matchChanged(existing, fields)) {
+      updated++;
+      matchOps.push(fields);
+    }
   }
 
   for (const batch of chunk(matchOps, 25)) {

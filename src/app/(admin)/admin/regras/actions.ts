@@ -42,7 +42,7 @@ export async function saveScoring(input: ScoringConfig): Promise<{ ok: boolean; 
   for (const m of finishedMatches) {
     await computeMatchPoints(m.id);
   }
-  const usersScored = await refreshRankingsSnapshot();
+  const usersScored = await refreshRankingsSnapshot({ recomputeSpecials: true });
   await logAudit(session.user.id, "admin.scoring.update", null, {
     config,
     matchesRecomputed: finishedMatches.length,

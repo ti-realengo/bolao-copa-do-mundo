@@ -37,7 +37,7 @@ export async function recomputeAll(): Promise<{ ok: boolean; message?: string }>
   for (const m of finishedMatches) {
     await computeMatchPoints(m.id);
   }
-  const usersScored = await refreshRankingsSnapshot();
+  const usersScored = await refreshRankingsSnapshot({ recomputeSpecials: true });
   await logAudit(session.user.id, "admin.matches.recompute", null, { finished: finishedMatches.length, usersScored });
   return { ok: true, message: `${finishedMatches.length} jogos, ${usersScored} usuários no ranking` };
 }

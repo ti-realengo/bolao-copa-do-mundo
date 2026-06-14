@@ -1,7 +1,7 @@
 import { db, runBatch, schema } from "@/lib/db";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { scorePrediction } from "./engine";
-import { recomputeAllSpecials } from "./specials";
+import { recomputeAllSpecials, getStoredSpecialPoints } from "./specials";
 import { loadScoringConfig } from "./config";
 import { evaluateBadgesAfterMatch } from "@/lib/badges/evaluate";
 import { log } from "@/lib/observability/logger";
@@ -61,10 +61,17 @@ export async function computeMatchPoints(matchId: number): Promise<number> {
   return updates.length;
 }
 
-export async function refreshRankingsSnapshot(): Promise<number> {
-  log.info("scoring.refreshRankingsSnapshot.start");
+export async function refreshRankingsSnapshot(
+  opts: { recomputeSpecials?: boolean } = {},
+): Promise<number> {
+  log.info("scoring.refreshRankingsSnapshot.start", { recomputeSpecials: opts.recomputeSpecials ?? false });
 
-  const specialsMap = await recomputeAllSpecials();
+  // Special results (champion, top scorer, etc.) only change when an admin
+  // edits them — never when a match finishes. So on the hot path we just read
+  // the persisted points; full recompute only runs when explicitly requested.
+  const specialsMap = opts.recomputeSpecials
+    ? await recomputeAllSpecials()
+    : await getStoredSpecialPoints();
   const now = Math.floor(Date.now() / 1000);
   const previous = await db.select().from(schema.rankingsSnapshot);
   const previousPositionByUser = new Map(previous.map((r) => [r.userId, r.position]));

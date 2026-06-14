@@ -68,6 +68,17 @@ export function computeSpecialsForUser(
   return pts;
 }
 
+// Reads the already-persisted special points (specialPredictions.points)
+// without recomputing. Used by refreshRankingsSnapshot on the hot path
+// (match-finish sync) where special results haven't changed — avoids the
+// O(N) UPDATE over every special prediction on every cron run.
+export async function getStoredSpecialPoints(): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ userId: schema.specialPredictions.userId, points: schema.specialPredictions.points })
+    .from(schema.specialPredictions);
+  return new Map(rows.map((r) => [r.userId, r.points ?? 0]));
+}
+
 export async function recomputeAllSpecials(): Promise<Map<string, number>> {
   log.info("scoring.recomputeAllSpecials.start");
   const results = await getSpecialResults();
