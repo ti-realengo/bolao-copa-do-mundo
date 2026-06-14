@@ -29,27 +29,33 @@ export default async function RankingPage() {
         <p className="text-brand-text-muted mt-1">Top 100. Atualizado após cada jogo.</p>
       </div>
 
-      <Card className="overflow-hidden">
-        <table className="w-full text-sm">
+      <Card className="overflow-x-auto">
+        <table className="w-full text-xs sm:text-sm">
           <thead className="bg-brand-surface text-left">
             <tr>
-              <th className="px-4 py-2 font-medium">#</th>
-              <th className="px-4 py-2 font-medium">Nome</th>
-              <th className="px-4 py-2 font-medium text-right">Pts</th>
-              <th className="px-4 py-2 font-medium text-right">Cravadas</th>
-              <th className="px-4 py-2 font-medium text-right">Δ</th>
+              <th className="px-2 py-1.5 sm:px-4 sm:py-2 font-medium w-8">#</th>
+              <th className="px-2 py-1.5 sm:px-4 sm:py-2 font-medium">Nome</th>
+              <th className="px-2 py-1.5 sm:px-4 sm:py-2 font-medium text-right">Pts</th>
+              <th className="px-2 py-1.5 sm:px-4 sm:py-2 font-medium text-right">
+                <span className="hidden sm:inline">Cravadas</span>
+                <span className="sm:hidden">Crav.</span>
+              </th>
+              <th className="px-2 py-1.5 sm:px-4 sm:py-2 font-medium text-right">
+                <span className="hidden sm:inline">Variação</span>
+                <span className="sm:hidden">Δ</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => {
               const isMe = row.user.id === session.user.id;
               return (
-                <tr key={row.user.id} className={`border-t border-brand-border ${isMe ? "bg-brand-secondary/10" : ""}`}>
-                  <td className="px-4 py-2 font-mono">{row.r.position}</td>
-                  <td className="px-4 py-2">{row.user.name ?? row.user.email}</td>
-                  <td className="px-4 py-2 text-right font-mono font-semibold">{row.r.totalPoints}</td>
-                  <td className="px-4 py-2 text-right font-mono">{row.r.exactCount}</td>
-                  <td className="px-4 py-2 text-right">
+                <tr key={row.user.id} className={`border-t border-brand-border ${isMe ? "bg-brand-primary/8" : ""}`}>
+                  <td className="px-2 py-1.5 sm:px-4 sm:py-2 font-mono">{row.r.position}</td>
+                  <td className="px-2 py-1.5 sm:px-4 sm:py-2 max-w-[120px] sm:max-w-none truncate">{row.user.name ?? row.user.email}</td>
+                  <td className="px-2 py-1.5 sm:px-4 sm:py-2 text-right font-mono font-semibold">{row.r.totalPoints}</td>
+                  <td className="px-2 py-1.5 sm:px-4 sm:py-2 text-right font-mono">{row.r.exactCount}</td>
+                  <td className="px-2 py-1.5 sm:px-4 sm:py-2 text-right whitespace-nowrap">
                     {row.r.positionChange == null ? "–" : row.r.positionChange > 0 ? `↑${row.r.positionChange}` : row.r.positionChange < 0 ? `↓${-row.r.positionChange}` : "–"}
                   </td>
                 </tr>

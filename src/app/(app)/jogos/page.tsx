@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { LayoutGrid, List, TrendingUp, ArrowRight } from "lucide-react";
+import { LayoutGrid, List, TrendingUp, ArrowRight, ChevronDown } from "lucide-react";
 import { db, schema } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
@@ -75,6 +75,15 @@ export default async function JogosPage({ searchParams }: PageProps) {
     groupedByDay.get(key)!.push(r);
   }
 
+  // Partition into today, future, past
+  const todayKey = brDateKey(Math.floor(Date.now() / 1000));
+  const allEntries = [...groupedByDay.entries()];
+  const todayEntries = allEntries.filter(([k]) => k === todayKey);
+  const futureEntries = allEntries.filter(([k]) => k > todayKey).sort(([a], [b]) => a.localeCompare(b));
+  const pastEntries = allEntries.filter(([k]) => k < todayKey).sort(([a], [b]) => b.localeCompare(a));
+
+  const pastMatchCount = pastEntries.reduce((sum, [, ms]) => sum + ms.length, 0);
+
   const dayFormatter = brDateFormat({
     weekday: "long",
     day: "2-digit",
@@ -118,6 +127,36 @@ export default async function JogosPage({ searchParams }: PageProps) {
     .filter((r): r is NonNullable<typeof r> => r !== null)
     .sort((a, b) => a.match.scheduledAt - b.match.scheduledAt)
     .slice(0, 3);
+
+  function renderDaySection(
+    dayKey: string,
+    dayMatches: typeof rows,
+    dayLabel?: string,
+  ) {
+    return (
+      <section key={dayKey} className="space-y-3">
+        <h2 className="font-display text-lg font-semibold capitalize text-brand-text">
+          {dayLabel ?? dayFormatter.format(new Date(dayKey + "T12:00:00Z"))}
+        </h2>
+        <div
+          className={cn(
+            "grid gap-3",
+            view === "grid" ? "md:grid-cols-2" : "grid-cols-1",
+          )}
+        >
+          {dayMatches.map((r) => (
+            <MatchCard
+              key={r.match.id}
+              match={r.match}
+              home={r.home}
+              away={r.away}
+              prediction={predByMatch.get(r.match.id) ?? null}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div className="grid xl:grid-cols-[minmax(0,1fr)_320px] gap-6">
@@ -164,30 +203,24 @@ export default async function JogosPage({ searchParams }: PageProps) {
           </div>
         </div>
 
-        {/* Days */}
-        {Array.from(groupedByDay.entries()).map(([day, dayMatches]) => (
-          <section key={day} className="space-y-3">
-            <h2 className="font-display text-lg font-semibold capitalize text-brand-text">
-              {dayFormatter.format(new Date(day + "T12:00:00Z"))}
-            </h2>
-            <div
-              className={cn(
-                "grid gap-3",
-                view === "grid" ? "md:grid-cols-2" : "grid-cols-1",
-              )}
-            >
-              {dayMatches.map((r) => (
-                <MatchCard
-                  key={r.match.id}
-                  match={r.match}
-                  home={r.home}
-                  away={r.away}
-                  prediction={predByMatch.get(r.match.id) ?? null}
-                />
-              ))}
+        {/* Today */}
+        {todayEntries.map(([k, ms]) => renderDaySection(k, ms, `Hoje — ${dayFormatter.format(new Date(k + "T12:00:00Z"))}`))}
+
+        {/* Future */}
+        {futureEntries.map(([k, ms]) => renderDaySection(k, ms))}
+
+        {/* Past — collapsible */}
+        {pastEntries.length > 0 && (
+          <details className="group">
+            <summary className="flex items-center gap-2 cursor-pointer rounded-xl border border-brand-border bg-brand-card px-4 py-3 text-sm font-medium text-brand-text-muted hover:text-brand-text hover:border-brand-border-strong transition-colors list-none [&::-webkit-details-marker]:hidden">
+              <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180 shrink-0" />
+              Jogos anteriores ({pastMatchCount} {pastMatchCount === 1 ? "jogo" : "jogos"})
+            </summary>
+            <div className="mt-4 space-y-6">
+              {pastEntries.map(([k, ms]) => renderDaySection(k, ms))}
             </div>
-          </section>
-        ))}
+          </details>
+        )}
 
         {filtered.length === 0 && rows.length > 0 && (
           <div className="rounded-2xl border border-dashed border-brand-border bg-brand-card/50 p-8 text-center text-sm text-brand-text-muted">
