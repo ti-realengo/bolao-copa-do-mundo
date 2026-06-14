@@ -203,12 +203,6 @@ export default async function JogosPage({ searchParams }: PageProps) {
           </div>
         </div>
 
-        {/* Today */}
-        {todayEntries.map(([k, ms]) => renderDaySection(k, ms, `Hoje — ${dayFormatter.format(new Date(k + "T12:00:00Z"))}`))}
-
-        {/* Future */}
-        {futureEntries.map(([k, ms]) => renderDaySection(k, ms))}
-
         {/* Past — collapsible */}
         {pastEntries.length > 0 && (
           <details className="group">
@@ -221,6 +215,12 @@ export default async function JogosPage({ searchParams }: PageProps) {
             </div>
           </details>
         )}
+
+        {/* Today */}
+        {todayEntries.map(([k, ms]) => renderDaySection(k, ms, `Hoje — ${dayFormatter.format(new Date(k + "T12:00:00Z"))}`))}
+
+        {/* Future */}
+        {futureEntries.map(([k, ms]) => renderDaySection(k, ms))}
 
         {filtered.length === 0 && rows.length > 0 && (
           <div className="rounded-2xl border border-dashed border-brand-border bg-brand-card/50 p-8 text-center text-sm text-brand-text-muted">
