@@ -3,27 +3,31 @@
 import { useRouter } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 
+const OPTIONS = [
+  { value: "all", label: "Todos os jogos" },
+  { value: "group", label: "Fase de Grupos" },
+  { value: "knockout", label: "Mata-mata" },
+  { value: "mine", label: "Meus jogos" },
+];
+
 interface Props {
-  groupCodes: string[];
   current: string;
-  filter: string;
+  group: string;
   view: string;
-  disabled?: boolean;
 }
 
-export function GroupSelect({ groupCodes, current, filter, view, disabled }: Props) {
+export function FilterSelect({ current, group, view }: Props) {
   const router = useRouter();
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const sp = new URLSearchParams();
-    if (filter !== "all") sp.set("filter", filter);
+    const val = e.target.value;
+    if (val !== "all") sp.set("filter", val);
+    if (val !== "knockout" && group !== "all") sp.set("group", group);
     if (view !== "grid") sp.set("view", view);
-    if (e.target.value !== "all") sp.set("group", e.target.value);
     const qs = sp.toString();
     router.push(`/jogos${qs ? `?${qs}` : ""}`);
   }
-
-  if (disabled) return null;
 
   return (
     <div className="relative">
@@ -32,10 +36,9 @@ export function GroupSelect({ groupCodes, current, filter, view, disabled }: Pro
         onChange={onChange}
         className="appearance-none rounded-xl bg-brand-card border border-brand-border pl-4 pr-9 py-2 text-sm text-brand-text-muted hover:text-brand-text hover:border-brand-border-strong focus:outline-none focus:ring-2 focus:ring-brand-primary/30 cursor-pointer"
       >
-        <option value="all">Todos os grupos</option>
-        {groupCodes.map((g) => (
-          <option key={g} value={g}>
-            Grupo {g}
+        {OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
           </option>
         ))}
       </select>

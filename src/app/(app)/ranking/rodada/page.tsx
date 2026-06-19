@@ -41,6 +41,7 @@ export default async function RankingRodadaPage({ searchParams }: PageProps) {
       userId: schema.predictions.userId,
       userName: schema.users.name,
       userEmail: schema.users.email,
+      createdAt: schema.users.createdAt,
       points: sql<number>`coalesce(sum(${schema.predictions.points}), 0)`,
       exactCount: sql<number>`coalesce(sum(${schema.predictions.isExact}), 0)`,
       winnerCount: sql<number>`coalesce(sum(${schema.predictions.isWinnerCorrect}), 0)`,
@@ -49,8 +50,8 @@ export default async function RankingRodadaPage({ searchParams }: PageProps) {
     .innerJoin(schema.matches, eq(schema.predictions.matchId, schema.matches.id))
     .innerJoin(schema.users, and(eq(schema.users.id, schema.predictions.userId), sql`${schema.users.deletedAt} is null`))
     .where(matchFilter)
-    .groupBy(schema.predictions.userId, schema.users.name, schema.users.email)
-    .orderBy(desc(sql`coalesce(sum(${schema.predictions.points}), 0)`), desc(sql`coalesce(sum(${schema.predictions.isExact}), 0)`), desc(sql`coalesce(sum(${schema.predictions.isWinnerCorrect}), 0)`), asc(schema.users.name));
+    .groupBy(schema.predictions.userId, schema.users.name, schema.users.email, schema.users.createdAt)
+    .orderBy(desc(sql`coalesce(sum(${schema.predictions.points}), 0)`), desc(sql`coalesce(sum(${schema.predictions.isExact}), 0)`), desc(sql`coalesce(sum(${schema.predictions.isWinnerCorrect}), 0)`), asc(schema.users.createdAt));
 
   const ranked = rows.map((row, i) => ({
     ...row,

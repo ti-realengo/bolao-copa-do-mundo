@@ -23,14 +23,14 @@ const KNOCKOUT_STAGES = new Set(["r32", "r16", "qf", "sf", "3rd", "final"]);
 
 function stageLabel(match: Match) {
   if (match.stage === "group") {
-    return `Grupo ${match.groupCode ?? ""} \u2022 Rodada ${match.round ?? ""}`.trim();
+    return `Grupo ${match.groupCode ?? ""} • Rodada ${match.round ?? ""}`.trim();
   }
   const map: Record<string, string> = {
     r32: "Rodada de 32",
     r16: "Oitavas de final",
     qf: "Quartas de final",
     sf: "Semifinal",
-    "3rd": "Disputa de 3\u00ba lugar",
+    "3rd": "Disputa de 3º lugar",
     final: "Final",
   };
   return map[match.stage] ?? match.stage.toUpperCase();
@@ -124,7 +124,7 @@ export function MatchCard({ match, home, away, prediction }: Props) {
             <span className="h-5 w-7 rounded-sm bg-brand-surface-2 shrink-0" />
           )}
           <span className="font-medium truncate text-sm sm:text-base">
-            {home?.namePt ?? "\u2014"}
+            {home?.namePt ?? "—"}
           </span>
         </div>
 
@@ -162,7 +162,7 @@ export function MatchCard({ match, home, away, prediction }: Props) {
 
         <div className="flex items-center gap-2.5 justify-end min-w-0">
           <span className="font-medium truncate text-right text-sm sm:text-base">
-            {away?.namePt ?? "\u2014"}
+            {away?.namePt ?? "—"}
           </span>
           {away?.flagUrl ? (
             <Image
@@ -217,8 +217,8 @@ export function MatchCard({ match, home, away, prediction }: Props) {
           )}
         </span>
         <div className="flex items-center gap-3 shrink-0">
-          {!isLocked && status === "saving" && <span className="text-brand-text-muted">Salvando\u2026</span>}
-          {!isLocked && status === "saved" && <span className="text-brand-primary">\u2713 Salvo</span>}
+          {!isLocked && status === "saving" && <span className="text-brand-text-muted">Salvando…</span>}
+          {!isLocked && status === "saved" && <span className="text-brand-primary">✓ Salvo</span>}
           {!isLocked && status === "error" && <span className="text-brand-danger">Erro ao salvar</span>}
           {isLocked && (
             <span className="flex items-center gap-1 text-brand-text-muted">
@@ -230,7 +230,7 @@ export function MatchCard({ match, home, away, prediction }: Props) {
             href={`/jogos/${match.id}`}
             className="flex items-center gap-1 text-brand-primary hover:underline font-medium"
           >
-            Detalhes & coment\u00e1rios
+            Detalhes & comentários
             <ArrowRight className="h-3 w-3" />
           </Link>
         </div>

@@ -55,7 +55,7 @@ const PARTICIPANT_NAV: NavGroup = {
     { href: "/ranking", label: "Ranking", icon: BarChart3 },
     { href: "/ranking/rodada", label: "Ranking por rodada", icon: BarChart2 },
     { href: "/palpites-especiais", label: "Especiais", icon: Sparkles },
-    { href: "/historico", label: "Hist\u00f3rico", icon: History },
+    { href: "/historico", label: "Histórico", icon: History },
     { href: "/regras", label: "Regulamento", icon: ScrollText },
   ],
 };

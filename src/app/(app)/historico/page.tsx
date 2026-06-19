@@ -19,14 +19,14 @@ const KNOCKOUT_STAGES = ["r32", "r16", "qf", "sf", "3rd", "final"];
 
 function stageLabel(match: { stage: string; groupCode: string | null; round: number | null }) {
   if (match.stage === "group") {
-    return `Grupo ${match.groupCode ?? ""} \u2022 Rodada ${match.round ?? ""}`.trim();
+    return `Grupo ${match.groupCode ?? ""} • Rodada ${match.round ?? ""}`.trim();
   }
   const map: Record<string, string> = {
     r32: "Rodada de 32",
     r16: "Oitavas de final",
     qf: "Quartas de final",
     sf: "Semifinal",
-    "3rd": "Disputa de 3\u00ba lugar",
+    "3rd": "Disputa de 3º lugar",
     final: "Final",
   };
   return map[match.stage] ?? match.stage.toUpperCase();
@@ -115,9 +115,9 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="font-display text-3xl md:text-4xl font-bold">Hist\u00f3rico de Palpites</h1>
+        <h1 className="font-display text-3xl md:text-4xl font-bold">Histórico de Palpites</h1>
         <p className="text-brand-text-muted mt-1.5 text-sm md:text-base">
-          Veja como voc\u00ea se saiu nos jogos j\u00e1 encerrados.
+          Veja como você se saiu nos jogos já encerrados.
         </p>
       </header>
 
@@ -179,7 +179,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
       {sortedDays.length === 0 && (
         <div className="rounded-2xl border border-dashed border-brand-border bg-brand-card/50 p-8 text-center text-sm text-brand-text-muted">
           {totalEvaluated === 0
-            ? "Nenhum palpite avaliado ainda. Jogos encerrados aparecer\u00e3o aqui."
+            ? "Nenhum palpite avaliado ainda. Jogos encerrados aparecerão aqui."
             : "Nenhum resultado encontrado com esse filtro."}
         </div>
       )}
@@ -232,7 +232,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
                   <div className="flex items-center gap-2">
                     <div className="flex-1 min-w-0 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <span className="font-medium truncate text-sm">{r.home?.namePt ?? "\u2014"}</span>
+                        <span className="font-medium truncate text-sm">{r.home?.namePt ?? "—"}</span>
                         {r.home?.flagUrl && (
                           <Image
                             src={r.home.flagUrl}
@@ -272,7 +272,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
                             className="rounded-[2px] shrink-0"
                           />
                         )}
-                        <span className="font-medium truncate text-sm">{r.away?.namePt ?? "\u2014"}</span>
+                        <span className="font-medium truncate text-sm">{r.away?.namePt ?? "—"}</span>
                       </div>
                     </div>
                   </div>
@@ -335,7 +335,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
               <span className="font-semibold">{totalEvaluated}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-brand-text-muted">Pontua\u00e7\u00e3o total</span>
+              <span className="text-brand-text-muted">Pontuação total</span>
               <span className="font-semibold">{totalPoints.toLocaleString("pt-BR")} pts</span>
             </div>
             <div className="flex items-center justify-between text-sm">

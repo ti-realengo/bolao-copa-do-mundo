@@ -50,7 +50,7 @@ const TABS = [
   { href: "/ranking/rodada", label: "Rodada" },
   { href: "/grupos", label: "Grupos" },
   { href: "/palpites-especiais", label: "Especiais" },
-  { href: "/historico", label: "Hist\u00f3rico" },
+  { href: "/historico", label: "Histórico" },
 ];
 
 const MOBILE_NAV = [
@@ -61,7 +61,7 @@ const MOBILE_NAV = [
   { href: "/ranking", label: "Ranking", icon: BarChart3 },
   { href: "/ranking/rodada", label: "Ranking por rodada", icon: BarChart2 },
   { href: "/palpites-especiais", label: "Especiais", icon: Sparkles },
-  { href: "/historico", label: "Hist\u00f3rico", icon: History },
+  { href: "/historico", label: "Histórico", icon: History },
   { href: "/regras", label: "Regulamento", icon: ScrollText },
 ];
 
