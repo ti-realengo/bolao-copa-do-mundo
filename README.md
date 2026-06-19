@@ -44,20 +44,23 @@ Projeto desenvolvido pela [**Tidebreakers**](https://tidebreakers.com.br/) — e
 
 ## Funcionalidades
 
-- **Login por email + senha** com cadastro restrito aos domínios corporativos liberados pelo admin (1º cadastro libera o próprio domínio automaticamente).
-- **Palpites de placar** pra todos os 104 jogos (fase de grupos + mata-mata até a final).
-- **Palpites especiais pré-Copa**: campeão, vice, 3º, artilheiro, primeira eliminada e seleção surpresa.
-- **Sistema de pontuação** com placar exato (3pts), vencedor correto (1pt) e bônus de mata-mata.
-- **Ranking geral, por rodada e por grupo privado**, com indicadores de subida/queda.
-- **Grupos privados** ("turma do RH", "amigos da TI") com convite por link.
-- **Painel superadmin completo**: domínios, regras, prêmios, usuários, jogos, recálculo, broadcast por email, auditoria.
-- **Gamificação**: badges (🔮 Tarólogo, 🔥 Sequência Quente, 🐓 Madrugador, etc.).
-- **Cards compartilháveis** (OG images) gerados via Worker pra LinkedIn, Slack, Teams, WhatsApp.
-- **PWA mobile-first** com modo escuro.
-- **i18n** preparado pra pt-BR, en e es.
-- **Editor de regras e prêmios** customizável pelo admin.
-- **Notificações por email** transacionais via Resend (lembrete de palpite, recap da rodada, broadcast). Opcional — sem Resend o app funciona normalmente, só não envia emails.
-- **Cron jobs** integrados pra sincronizar resultados e enviar lembretes automaticamente.
+- **Login por email + senha** com cadastro restrito aos domínios corporativos liberados pelo admin (1º cadastro libera o próprio domínio automaticamente, vira superadmin).
+- **Palpites de placar** pra todos os 104 jogos (fase de grupos + mata-mata até a final) com auto-save e deadline configurável.
+- **Palpites especiais pré-Copa**: campeão, vice, 3º, artilheiro, primeira eliminada e seleção surpresa — com pontuação configurável pelo admin.
+- **Sistema de pontuação** com placar exato (3pts), vencedor correto (1pt), bônus de mata-mata (+1pt) e pesos editáveis pelo admin.
+- **Ranking geral e por grupo privado**, com indicadores de subida/queda e tiebreakers configuráveis.
+- **Grupos privados** ("turma do RH", "amigos da TI") com convite por código — até 3 grupos por usuário, 50 membros cada.
+- **Painel superadmin completo**: dashboard, configurações de branding, domínios, regras com editor de pontuação, prêmios com upload de imagem, usuários com reset de senha, jogos com sync manual, resultados especiais, recálculo de pontos, broadcast por email, auditoria e observabilidade.
+- **Gamificação**: badges (🔮 Tarólogo, 🐓 Madrugador, 🎯 Cravou, 💀 Zica).
+- **Cards compartilháveis** (OG images) pra LinkedIn, Slack, Teams, WhatsApp.
+- **Comments por jogo** — 1 comentário por usuário por jogo, liberados só após início da partida, com moderação pelo admin.
+- **PWA mobile-first** com modo escuro e banner de instalação.
+- **i18n** completo pra pt-BR, en e es com seletor de idioma.
+- **Editor de regras e prêmios** customizável pelo admin (markdown + upload de imagens).
+- **Notificações por email** via Resend (lembrete de palpite, recap da rodada, broadcast admin). Opcional — sem Resend o app funciona normalmente.
+- **Cron jobs** integrados: sync de resultados a cada 5min, lembretes horários, recap diário.
+- **LGPD**: consentimento, exportação de dados, exclusão de conta (soft delete).
+- **Auth seguro**: senha com scrypt, sessão por cookie httpOnly, primeiro cadastro vira superadmin automaticamente.
 
 ## Stack
 
@@ -78,26 +81,37 @@ Projeto desenvolvido pela [**Tidebreakers**](https://tidebreakers.com.br/) — e
 
 Já entregue:
 
-- Auth magic link + admin com senha + 2FA TOTP
-- Cadastro de domínios permitidos
-- Palpites de fase de grupos
-- Cálculo de pontos + ranking
-- Painel superadmin (configurações, domínios, regras, prêmios, broadcast, auditoria)
-- LGPD básico + PWA + modo escuro
+- Auth email + senha com sessão segura e auto-promoção a superadmin
+- Cadastro de domínios permitidos (com wildcard)
+- Palpites de placar pra todos os jogos (fase de grupos + mata-mata com advancing team)
+- Palpites especiais pré-Copa (campeão, vice, 3º, artilheiro, eliminada, surpresa)
+- Sistema de pontuação configurável (placar exato, vencedor, bônus mata-mata)
+- Ranking geral + ranking por grupo privado + tiebreakers
+- Grupos privados com convite por código
+- Painel superadmin completo (10 seções: dashboard, configurações, domínios, usuários, jogos, resultados especiais, regras, prêmios, broadcast, auditoria, observabilidade)
+- Badges (Tarólogo, Madrugador, Cravou, Zica)
+- Cards compartilháveis (OG images)
+- Comments por jogo com moderação
+- Notificações por email (Resend): lembrete de palpite, recap diário, broadcast admin
+- PWA mobile-first com modo escuro
+- i18n completo (pt-BR, en, es)
+- LGPD: consentimento, exportação de dados, exclusão de conta
+- Cron jobs: sync de resultados, lembretes, recap
 - Deploy via OpenNext + cron triggers
 
 Próximas prioridades:
 
-- Cards compartilháveis polidos
-- Estrutura de mata-mata (Rodada de 32 → final) automatizada
-- Comments leves por jogo
+- Ranking por rodada (página separada com filtro)
+- Badges restantes (Sequência Quente, Profeta, Líder, Conector)
 - Backup automático D1 → R2
+- Transferência de ownership de grupos
 
 Em pesquisa (v2 pós-Copa):
 
 - SSO Google Workspace / Azure AD
 - Multi-torneio (Brasileirão, Eurocopa, Libertadores)
 - Notificações push
+- App nativo (Capacitor sobre PWA)
 
 Se sentir falta de algo, abra uma [issue](https://github.com/victorrm/bolao-copa-do-mundo/issues).
 

@@ -19,7 +19,7 @@ Plataforma web open-source, gratuita, white-label e instalável em poucos clique
 
 ### 1.3 Princípios de produto
 
-1. **Zero fricção pro usuário final**: login por magic link, sem senha.
+1. **Zero fricção pro usuário final**: login por email + senha, cadastro restrito ao domínio corporativo.
 2. **Zero fricção pro admin**: deploy em 1 clique, configuração guiada, paineis self-service.
 3. **Single-tenant por design**: cada empresa instala sua própria cópia. Dados nunca cruzam entre empresas.
 4. **Cloudflare-first**: stack inteira em um único provedor, free tier acomoda empresas até ~10k funcionários.
@@ -32,8 +32,9 @@ Plataforma web open-source, gratuita, white-label e instalável em poucos clique
 - Não cobre outros torneios (Brasileirão, Eurocopa, Libertadores) — embora a modelagem seja preparada pra isso no futuro.
 - Não cobre Copa do Mundo Feminina ou edições anteriores.
 - Não tem app mobile nativo (PWA cobre o uso móvel).
-- Não integra com SSO corporativo (Google Workspace, Azure AD) no MVP — fica no roadmap v2.
+- Não tem SSO corporativo (Google Workspace, Azure AD) no MVP — fica no roadmap v2.
 - Não suporta múltiplas empresas no mesmo deploy (multi-tenant).
+- Não tem magic link auth — implementado como email + senha. Magic link pode ser adicionado futuramente.
 
 ---
 
@@ -60,62 +61,57 @@ Desenvolvedor externo que clona o repositório pra usar na própria empresa, ou 
 | Camada | Tecnologia | Função |
 |---|---|---|
 | Frontend | **Next.js 15 (App Router)** + **TypeScript** + **Tailwind CSS** + **shadcn/ui** | Pages do bolão, painel admin, painel do usuário |
-| Hospedagem frontend | **Cloudflare Pages** | Build e deploy estático/SSR via OpenNext |
-| Backend / API | **Cloudflare Workers** (Hono.js) | Endpoints REST, lógica de negócio, jobs |
+| Backend / API | **Next.js API Routes** (App Router) | Endpoints REST, lógica de negócio, crons |
+| Hospedagem | **Cloudflare Workers** (via OpenNext) | Deploy único, SSR + API + crons |
 | Banco de dados | **Cloudflare D1** (SQLite) | Dados transacionais (usuários, palpites, jogos) |
-| Storage de arquivos | **Cloudflare R2** | Fotos de perfil, logo da empresa, OG images |
-| Cache / sessões | **Cloudflare KV** | Sessões, magic links, rate limit |
-| Filas | **Cloudflare Queues** | Cálculo de pontuação assíncrono, envio de emails |
-| Cron jobs | **Cloudflare Cron Triggers** | Fetch de resultados, cálculo periódico, lembretes |
-| Email transacional | **Resend** | Magic links, notificações, broadcasts |
-| API de resultados | **Football-Data.org** (primária) + **API-Football** (fallback) | Resultados em tempo real |
+| Storage de arquivos | **Cloudflare R2** | Fotos de perfil, logo da empresa, OG images, prêmios |
+| Cache / sessões | **Cloudflare KV** | Sessões, rate limit |
+| Cron jobs | **Cloudflare Cron Triggers** | Sync de resultados, lembretes, recap |
+| Email transacional | **Resend** (opcional) | Lembretes, recaps, broadcasts |
+| API de resultados | **Football-Data.org** (primária) + edição manual no admin | Resultados em tempo real |
 | ORM | **Drizzle ORM** | Type-safe queries em D1 |
-| Auth | **Lucia Auth** (custom) ou implementação própria | Magic link + sessões |
-| i18n | **next-intl** | pt-BR, en, es |
-| Observabilidade | **Cloudflare Analytics** + **Logpush** | Métricas e logs |
+| Auth | **Email + senha (scrypt)** com sessões por cookie httpOnly | Login, cadastro por domínio |
+| i18n | **Sistema próprio** (`t()` + dicionários tipados) | pt-BR, en, es |
+| Observabilidade | **Cloudflare Analytics** | Métricas e logs |
 
 ### 3.2 Diagrama lógico
 
 ```
-                    ┌──────────────────────┐
-                    │  Funcionário (PWA)   │
-                    └──────────┬───────────┘
-                               │ HTTPS
-                               ▼
-                ┌──────────────────────────────┐
-                │   Cloudflare Pages (Next.js) │
-                │   - SSR + Static Assets      │
-                └──────────┬───────────────────┘
-                           │
-                           ▼
-                ┌──────────────────────────────┐
-                │ Cloudflare Workers (Hono.js) │
-                │   - /api/auth                │
-                │   - /api/predictions         │
-                │   - /api/rankings            │
-                │   - /api/admin               │
-                └──┬───────┬─────────┬─────────┘
-                   │       │         │
-        ┌──────────┘       │         └─────────┐
-        ▼                  ▼                   ▼
-   ┌──────────┐      ┌──────────┐        ┌──────────┐
-   │    D1    │      │    KV    │        │    R2    │
-   │ (SQLite) │      │ (Cache)  │        │ (Files)  │
-   └──────────┘      └──────────┘        └──────────┘
-        ▲                  ▲
-        │                  │
-   ┌────┴──────────────────┴────────┐
-   │  Cron Triggers (Workers)       │
-   │  - Fetch resultados (a cada 5min em dia de jogo) │
-   │  - Cálculo de pontos           │
-   │  - Lembretes via email         │
-   └────────┬───────────────────────┘
-            │
-            ▼
-   ┌─────────────────────┐    ┌──────────────────┐
-   │ Football-Data.org   │    │     Resend       │
-   │  (resultados)       │    │  (emails)        │
-   └─────────────────────┘    └──────────────────┘
+                     ┌──────────────────────┐
+                     │  Funcionário (PWA)   │
+                     └──────────┬───────────┘
+                                │ HTTPS
+                                ▼
+                 ┌──────────────────────────────┐
+                 │ Cloudflare Workers (Next.js) │
+                 │   - SSR + Static Assets      │
+                 │   - /api/cron/*              │
+                 │   - /api/export-data          │
+                 │   - /api/upload/*             │
+                 │   - /api/og/*                │
+                 └──────────┬───────────────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+         ┌────┴────┐   ┌────┴────┐   ┌────┴────┐
+         │    D1  │   │    KV    │   │    R2   │
+         │(SQLite)│   │ (Cache)  │   │ (Files) │
+         └─────────┘   └─────────┘   └─────────┘
+              ▲               ▲
+              │               │
+    ┌─────────┴───────────────┴────────────┐
+    │  Cron Triggers (Cloudflare Workers)  │
+    │  - Sync resultados (a cada 5min)     │
+    │  - Cálculo de pontos                 │
+    │  - Lembretes + recap por email       │
+    └────────┬─────────────────────────────┘
+             │
+     ┌───────┴────────┐
+     │                  │
+┌────┴─────┐     ┌─────┴─────┐
+│Football-│     │  Resend   │
+│Data.org │     │ (emails)  │
+└─────────┘     └───────────┘
 ```
 
 ### 3.3 Custo estimado (Cloudflare free tier)
@@ -124,7 +120,7 @@ Para uma empresa com até ~5.000 funcionários ativos durante a Copa:
 
 - **Workers**: 100k requisições/dia gratuitas — suficiente.
 - **D1**: 5M reads/dia gratuitos, 100k writes/dia — suficiente.
-- **KV**: 100k reads/dia, 1k writes — suficiente para magic links.
+- **KV**: 100k reads/dia, 1k writes — suficiente para sessões.
 - **R2**: 10GB storage grátis — sobra pra fotos de perfil.
 - **Pages**: 500 builds/mês — suficiente.
 - **Resend**: 3k emails/mês grátis (pode precisar de upgrade pra empresas grandes — ~US$ 20/mês cobre 50k emails).
@@ -164,9 +160,9 @@ CREATE TABLE users (
   avatar_url TEXT, -- R2 URL
   phone TEXT,
   role TEXT DEFAULT 'participant', -- 'participant' | 'superadmin'
-  password_hash TEXT, -- apenas pra superadmin
+  password_hash TEXT NOT NULL, -- scrypt hash para todos os usuários
   password_must_change INTEGER DEFAULT 0,
-  totp_secret TEXT, -- 2FA do superadmin
+  email_prefs_json TEXT DEFAULT '{}', -- preferências de notificação
   consent_lgpd INTEGER DEFAULT 0,
   consent_lgpd_at INTEGER,
   created_at INTEGER NOT NULL,
@@ -184,14 +180,14 @@ CREATE TABLE sessions (
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Magic links (one-time)
-CREATE TABLE magic_links (
-  token_hash TEXT PRIMARY KEY,
-  email TEXT NOT NULL,
-  expires_at INTEGER NOT NULL,
-  used_at INTEGER,
-  ip_hash TEXT
-);
+-- Magic links (one-time) — previsto para v2, não implementado no MVP
+-- CREATE TABLE magic_links (
+--   token_hash TEXT PRIMARY KEY,
+--   email TEXT NOT NULL,
+--   expires_at INTEGER NOT NULL,
+--   used_at INTEGER,
+--   ip_hash TEXT
+-- );
 
 -- Seleções
 CREATE TABLE teams (
@@ -356,66 +352,67 @@ O repositório virá com seeds prontos contendo:
 
 ### 5.1 Autenticação
 
-#### 5.1.1 Login do participante (magic link)
+#### 5.1.1 Login do participante (email + senha)
 
-1. Usuário entra em `/login`, digita email.
-2. Sistema valida que o domínio está em `allowed_domains`. Se não:
-   - Retorna mensagem genérica ("Verifique seu email pra continuar") **sem revelar** se o domínio está ou não permitido (evita enumeração).
-   - Não dispara email.
-3. Se permitido: gera token (32 bytes random, hash SHA-256 armazenado), salva em `magic_links` com TTL de 15 min.
-4. Envia email via Resend com link `https://app.com/auth/verify?token=...`.
-5. Usuário clica → token validado → cria sessão (cookie httpOnly, SameSite=Lax, 30 dias).
-6. Se primeiro login: redireciona pra `/onboarding` (consent LGPD + completar perfil).
+> **Nota de implementação:** O MVP foi entregue com email + senha (sem magic link). O fluxo de magic link permanece no roadmap como melhoria futura.
 
-**Rate limiting**: máximo 5 magic links por email a cada 1h, 20 por IP a cada 1h. Mensagem genérica em caso de bloqueio.
+1. Usuário acessa `/cadastro`, preenche nome, email e senha.
+2. Sistema valida que o domínio do email está em `allowed_domains`. Se não, exibe erro genérico (sem revelar se o domínio está ou não permitido — evita enumeração).
+3. Senha armazenada com hash scrypt (adaptado do Next.js Auth Helpers).
+4. Sessão via cookie httpOnly, SameSite=Lax, 30 dias.
+5. Se primeiro login (primeiro cadastro do sistema): o usuário vira `superadmin` automaticamente e o domínio é adicionado à allowlist.
+6. Superadmin pode resetar senha de qualquer participante no painel admin — gera senha temporária, participante é forçado a trocar no próximo login.
+
+**Rate limiting**: máximo 5 tentativas de login por email a cada 15 min. Mensagem genérica em caso de bloqueio.
 
 #### 5.1.2 Login do superadmin
 
-1. Página separada em `/admin/login`.
-2. Email + senha. Hash com **Argon2id** (mais seguro que bcrypt em ambiente serverless).
-3. Primeiro login com credenciais default (criadas no setup): força troca de senha imediata.
-4. Após troca de senha, força configuração de **TOTP** (recomendação forte, opcional).
-5. Senhas: mínimo 12 caracteres, sem regra de complexidade arbitrária (seguindo NIST 800-63B).
+1. Mesmo fluxo de email + senha.
+2. Primeiro usuário a se cadastrar vira superadmin automaticamente.
+3. Superadmin pode resetar senhas de participantes via painel admin — o participante é forçado a definir uma nova senha no próximo login.
 
-### 5.2 Cadastro de domínios permitidos
+### 5.2 Cadastro de domínios permitidos ✅
 
-- Painel admin com lista de domínios.
-- Suporte a **wildcard** opcional (`*.empresa.com.br` aceita `marketing.empresa.com.br`).
-- Validação: regex de domínio válido, sem espaços, lowercase.
-- Mínimo 1 domínio obrigatório pro sistema funcionar.
+- Painel admin com lista de domínios. ✅
+- Suporte a **wildcard** opcional (`*.empresa.com.br` aceita `marketing.empresa.com.br`). ✅
+- Validação: regex de domínio válido, sem espaços, lowercase. ✅
+- Mínimo 1 domínio obrigatório pro sistema funcionar. ✅
 
-### 5.3 Palpites
+### 5.3 Palpites ✅
 
-#### 5.3.1 Palpites de jogos
+#### 5.3.1 Palpites de jogos ✅
 
 **Tela `/jogos`**:
-- Lista de jogos agrupados por **dia** (não por rodada — UX mais natural no celular).
-- Cada card: bandeiras + nome dos times, horário local, estádio, status, campos numéricos pra placar.
-- Indicador visual: `aberto pra palpite` / `palpite registrado` / `congelado`.
-- Auto-save a cada mudança (debounce 800ms) — sem botão "salvar".
-- Mata-mata: além do placar, dropdown "quem se classifica" (pra empate em 90min).
+- Lista de jogos agrupados por **dia** (não por rodada — UX mais natural no celular). ✅
+- Jogos de hoje aparecem primeiro, jogos passados no topo. ✅
+- Cada card: bandeiras + nome dos times, horário local, estádio, status, campos numéricos pra placar. ✅
+- Indicador visual: `aberto pra palpite` / `palpite registrado` / `congelado`. ✅
+- Auto-save a cada mudança (debounce 800ms) — sem botão "salvar". ✅
+- Mata-mata: além do placar, dropdown "quem se classifica" (pra empate em 90min). ✅
 
-**Deadline**: configurável pelo superadmin. Padrão sugerido: **15 minutos antes do início do jogo**. Opções: início do jogo / 15 min antes / 1h antes / 1 dia antes.
+**Deadline**: configurável pelo superadmin. Padrão sugerido: **15 minutos antes do início do jogo**. ✅
 
-**Default sem palpite**: se o usuário não palpitou, conta como **não-palpite** (0 pontos), nunca como 0×0.
+**Default sem palpite**: se o usuário não palpitou, conta como **não-palpite** (0 pontos), nunca como 0×0. ✅
 
-**Edição**: livre até o deadline.
+**Edição**: livre até o deadline. ✅
 
-#### 5.3.2 Palpites especiais (pré-Copa)
+#### 5.3.2 Palpites especiais (pré-Copa) ✅
 
 Tela `/palpites-especiais`, disponível desde a abertura até o início do 1º jogo:
-- Campeão (5 pts)
-- Vice (3 pts)
-- 3º lugar (2 pts)
-- Artilheiro (texto livre, validação manual pelo admin pós-Copa) (3 pts)
-- Primeira seleção eliminada na fase de grupos (2 pts)
-- Seleção surpresa - chega às quartas sendo de pote 3 ou 4 (3 pts)
+- Campeão (5 pts). ✅
+- Vice (3 pts). ✅
+- 3º lugar (2 pts). ✅
+- Artilheiro (texto livre, validação manual pelo admin pós-Copa) (3 pts). ✅
+- Primeira seleção eliminada na fase de grupos (2 pts). ✅
+- Seleção surpresa - chega às quartas sendo de pote 3 ou 4 (3 pts). ✅
 
-Após o 1º jogo (`locked_at` preenchido), tela vira somente leitura.
+Após o 1º jogo (`locked_at` preenchido), tela vira somente leitura. ✅
 
-### 5.4 Sistema de pontuação
+Admin pode editar resultados reais em `/admin/resultados-especiais`. ✅
 
-#### 5.4.1 Regras
+### 5.4 Sistema de pontuação ✅
+
+#### 5.4.1 Regras ✅
 
 | Cenário | Pontos |
 |---|---|
@@ -430,18 +427,20 @@ Após o 1º jogo (`locked_at` preenchido), tela vira somente leitura.
 | Palpite especial: surpresa | 3 |
 | Mata-mata: acertou quem passou (se errou placar) | +1 bônus |
 
+> Todos os pesos são configuráveis pelo admin em `/admin/regras`.
+
 > Para mata-mata, considerar resultado do **tempo normal** pro placar exato. Quem se classifica conta separado (resolve por pênaltis).
 
-#### 5.4.2 Cálculo
+#### 5.4.2 Cálculo ✅
 
-Disparado por **fila** quando um jogo muda de status pra `finished`:
-1. Worker lê todos os palpites do jogo.
-2. Calcula pontos de cada um, atualiza `predictions.points` e flags.
-3. Atualiza `rankings_snapshot` (recalc completo é viável até ~50k usuários — abaixo de 1s em D1).
-4. Dispara badges aplicáveis (job paralelo).
-5. Enfileira emails de "resultado da rodada".
+Disparado quando o cron de sync marca um jogo como `finished`:
+1. Worker lê todos os palpites do jogo. ✅
+2. Calcula pontos de cada um, atualiza `predictions.points` e flags. ✅
+3. Atualiza `rankings_snapshot` (recalc completo). ✅
+4. Dispara badges aplicáveis (job paralelo). ✅
+5. Recálculo de palpites especiais quando admin define resultados reais. ✅
 
-#### 5.4.3 Critérios de desempate (ranking)
+#### 5.4.3 Critérios de desempate (ranking) ✅
 
 Cascata configurável pelo admin, mas com default sensato:
 1. Total de pontos
@@ -450,148 +449,142 @@ Cascata configurável pelo admin, mas com default sensato:
 4. Pontos em palpites especiais
 5. Ordem de criação da conta (mais antigo ganha)
 
-### 5.5 Rankings
+Todos implementados em `refreshRankingsSnapshot()`. ✅
 
-Tela `/ranking` com três visualizações:
-- **Geral**: top 100 + posição do usuário logado destacada (mesmo se fora do top 100).
-- **Por rodada**: ranking calculado só com pontos da rodada selecionada.
-- **Por grupo privado**: ranking interno do grupo (visível só pros membros).
+### 5.5 Rankings ✅ (parcial)
+
+Tela `/ranking` com visualizações:
+- **Geral**: top 100 + posição do usuário logado destacada (mesmo se fora do top 100). ✅
+- **Por grupo privado**: ranking interno do grupo (visível só pros membros). ✅
+- **Por rodada**: ranking calculado só com pontos da rodada selecionada. ❌ (não implementado)
 
 Cada linha mostra: posição, avatar, nome, pontos, indicador de subida/queda (`↑3`, `↓2`, `–`), placares exatos.
 
 Cache de 60s no KV pra evitar pressão no D1 em momentos de pico.
 
-### 5.6 Grupos privados (leagues)
+### 5.6 Grupos privados (leagues) ✅
 
-- Qualquer participante pode criar até **3 grupos**.
-- Criação: nome, descrição, foto opcional.
-- Sistema gera **invite code** (`bola-XXXX-YYYY`) e link compartilhável.
-- Configurações: público (qualquer um com link entra) vs aprovação manual.
-- Limite default: 50 membros (ajustável pelo dono).
-- Owner pode: renomear, expulsar, transferir ownership, arquivar.
-- Sem aposta financeira de qualquer tipo (proibido em UI e termos de uso).
+- Qualquer participante pode criar até **3 grupos**. ✅
+- Criação: nome, descrição. ✅
+- Sistema gera **invite code** e link compartilhável. ✅
+- Configurações: grupo aberto (qualquer um com link entra). ✅
+- Limite default: 50 membros. ✅
+- Owner pode: renomear, expulsar membros. ❌ (transferir ownership não implementado)
+- Ranking interno do grupo. ✅
+- Sem aposta financeira de qualquer tipo (proibido em UI e termos de uso). ✅
 
-### 5.7 Perfil do usuário
+### 5.7 Perfil do usuário ✅
 
 Tela `/perfil`:
-- Foto (upload pra R2, redimensionado em Worker pra 256×256 webp).
-- Nome de exibição (mostrado no ranking).
-- Telefone (opcional, útil pra contato em caso de premiação).
-- Email (read-only — fonte da verdade).
-- Estatísticas pessoais: total pts, placares exatos, %acerto, ranking geral, badges.
-- Histórico de palpites.
-- Botão "exportar meus dados" (LGPD).
-- Botão "excluir minha conta" (LGPD — soft delete + email de confirmação).
+- Foto (upload pra R2, redimensionado em Worker pra 256×256 webp). ✅
+- Nome de exibição (mostrado no ranking). ✅
+- Telefone (opcional, útil pra contato em caso de premiação). ✅
+- Email (read-only — fonte da verdade). ✅
+- Estatísticas pessoais: total pts, placares exatos, %acerto, ranking geral, badges. ✅
+- Histórico de palpites. ✅
+- Preferências de email (lembretes, recap, broadcast). ✅
+- Botão "exportar meus dados" (LGPD). ✅
+- Botão "excluir minha conta" (LGPD — soft delete). ✅
 
-### 5.8 Página de regras (customizável)
+### 5.8 Página de regras (customizável) ✅
 
-- Rota fixa: `/regras`
-- Conteúdo armazenado em `settings.rules_html` (markdown ou rich text editor no admin).
-- Editor sugerido: **Tiptap** (headless, customizável, integra bem com shadcn).
-- Versionamento: histórico de alterações em `audit_log`.
-- Renderização sanitizada (DOMPurify ou equivalente).
+- Rota fixa: `/regras`. ✅
+- Conteúdo armazenado em `settings.rules_html` (markdown editor no admin). ✅
+- Renderização sanitizada. ✅
 
-### 5.9 Página de prêmios (customizável)
+### 5.9 Página de prêmios (customizável) ✅
 
-- Rota fixa: `/premios`
-- Definida pelo superadmin: quantidade de ganhadores + descrição de cada prêmio.
-- JSON em `settings.prizes_json`:
-```json
-[
-  { "position": 1, "title": "Camisa oficial Brasil 2026", "image_url": "..." },
-  { "position": 2, "title": "Vale R$ 500 Decathlon", "image_url": "..." },
-  { "position": 3, "title": "Brinde da empresa", "image_url": "..." }
-]
-```
-- Pode definir prêmios extras (rodada com mais pontos, palpiteiro mais consistente, etc).
+- Rota fixa: `/premios`. ✅
+- Definida pelo superadmin: quantidade de ganhadores + descrição + imagem de cada prêmio. ✅
+- Upload de imagens de prêmios para R2. ✅
+- Pode definir prêmios extras (rodada com mais pontos, etc). ✅
 
-### 5.10 Painel do superadmin
+### 5.10 Painel do superadmin ✅
 
 Rota `/admin/*`. Seções:
 
-| Seção | Funcionalidades |
-|---|---|
-| Dashboard | KPIs: usuários ativos, % palpites preenchidos, palpites por jogo, jogos próximos |
-| Configurações | Nome empresa, logo, cores, idioma, fuso horário, deadline padrão, regras de pontuação |
-| Domínios | CRUD de domínios permitidos |
-| Usuários | Lista, busca, banir, promover (cuidado), excluir (LGPD) |
-| Jogos | Editar manualmente (em caso de adiamento, cancelamento, erro de API) |
-| Resultados | Forçar recálculo de pontuação, marcar jogo como concluído manualmente |
-| Regras | Editor rich text |
-| Prêmios | Editor de prêmios |
-| Ranking | Vista admin com export CSV |
-| Auditoria | Log filtrado por ação/usuário/data |
-| Broadcast | Enviar email pra todos os participantes (com preview e confirmação) |
-| Templates email | Editar texto/assuntos dos emails |
-| Backup | Download do D1 dump |
+| Seção | Funcionalidades | Status |
+|---|---|---|
+| Dashboard | KPIs: usuários ativos, % palpites preenchidos, jogos próximos | ✅ |
+| Configurações | Nome empresa, logo, cores, idioma, fuso, deadline padrão, regras de pontuação | ✅ |
+| Domínios | CRUD de domínios permitidos (com wildcard) | ✅ |
+| Usuários | Lista, busca, reset de senha, excluir (LGPD) | ✅ |
+| Jogos | Sync manual via API, editar jogos, recompute scores | ✅ |
+| Resultados especiais | Definir campeão, vice, 3º, artilheiro, eliminada, surpresa reais | ✅ |
+| Regras | Editor markdown + editor de pontuação | ✅ |
+| Prêmios | CRUD de prêmios com upload de imagem | ✅ |
+| Broadcast | Enviar email pra todos os participantes | ✅ |
+| Auditoria | Log filtrado por ação/usuário/data | ✅ |
+| Observabilidade | Log de emails, ações recentes, health | ✅ |
 
-### 5.11 Notificações por email
+### 5.11 Notificações por email ✅
 
-Templates (Resend + React Email):
-- **Magic link** (assunto: "Seu acesso ao Bolão {Empresa}")
-- **Boas-vindas** (1º login)
-- **Lembrete de palpite** (12h antes de jogos sem palpite)
-- **Resultado da rodada** (após último jogo do dia)
-- **Mudança de posição** (subiu top 10, opcional)
-- **Broadcast admin** (avisos institucionais)
+Templates (Resend):
+- **Lembrete de palpite** (12h antes de jogos sem palpite). ✅
+- **Resultado da rodada** (após último jogo do dia). ✅
+- **Broadcast admin** (avisos institucionais). ✅
 
-Frequência configurável pelo usuário em `/perfil` → preferências.
+ Frequência configurável pelo usuário em `/perfil` → preferências. ✅
 
-### 5.12 Gamificação — badges
+Sem Resend: o app funciona normalmente, emails são logados no console. ✅
 
-Conjunto inicial:
-- 🔮 **Tarólogo** — 5 placares exatos
+### 5.12 Gamificação — badges ✅ (4 de 8)
+
+Conjunto implementado (4 de 8):
+- 🔮 **Tarólogo** — 5 placares exatos ✅
+- 🐓 **Madrugador** — primeiro a palpitar em uma rodada ✅
+- 🎯 **Cravou** — placar exato em jogo do Brasil ✅
+- 💀 **Zica** — errou todos os palpites de uma rodada ✅
+
+Planejados (não implementados):
 - 🔥 **Sequência Quente** — 5 acertos seguidos
-- 🐓 **Madrugador** — primeiro a palpitar em uma rodada
-- 🎯 **Cravou** — placar exato em jogo do Brasil
-- 💀 **Zica** — errou todos os palpites de uma rodada
 - ⭐ **Profeta** — palpite especial de campeão acertado
 - 👑 **Líder** — passou 5 dias consecutivos no top 1
 - 🤝 **Conector** — criou grupo com 10+ membros
 
-### 5.13 Cards compartilháveis
+### 5.13 Cards compartilháveis ✅
 
-- Worker que gera **OG image** (PNG via `@vercel/og` ou `satori`) com:
+- Worker que gera **OG image** (PNG via `next/og` ImageResponse) com:
   - Nome/avatar do usuário
-  - Palpite ou ranking atual
+  - Ranking atual (posição, pontos, placares exatos)
   - Cores e logo da empresa
-- URL: `/api/og/predict/:matchId/:userId` ou `/api/og/rank/:userId`
-- Botão "Compartilhar" gera link com OG image — ideal pra LinkedIn, Slack, Teams, WhatsApp.
+- URL: `/api/og/rank/[userId]`
+- Botão "Compartilhar" no perfil — usa Web Share API ou clipboard fallback. ✅
 
-### 5.14 Comments / trash talk (leve)
+### 5.14 Comments / trash talk (leve) ✅
 
-- Cada jogo tem caixa de comentários **liberada apenas após início do jogo** (evita espelho de palpites).
-- 1 comentário por usuário por jogo (limita ruído).
-- Reactions emoji (limitadas: 👏 😂 😱 ⚽).
-- Moderação: superadmin pode remover comentário e suspender usuário.
+- Cada jogo tem caixa de comentários **liberada apenas após início do jogo** (evita espelho de palpites). ✅
+- 1 comentário por usuário por jogo (limita ruído). ✅
+- Reactions emoji (limitadas: 👏 😂 😱 ⚽). ❌ (não implementado — apenas texto)
+- Moderação: superadmin pode ocultar comentário. ✅ (remoção direta implementada, suspensão de usuário não)
 
-### 5.15 LGPD
+### 5.15 LGPD ✅
 
-- Banner de consentimento no 1º acesso, com texto customizável pelo admin.
-- Política de privacidade em `/privacidade` (template padrão + editável).
-- Direito de exportação: gera ZIP com JSON dos dados em até 24h.
-- Direito ao esquecimento: soft delete imediato, hard delete em 30 dias (job mensal).
-- Logs de auditoria mantidos por 12 meses.
+- Banner de consentimento no 1º acesso, com texto customizável pelo admin. ✅
+- Política de privacidade em `/privacidade` (template padrão). ✅
+- Direito de exportação: download imediato dos dados em JSON. ✅
+- Direito ao esquecimento: soft delete imediato, hard delete em 30 dias. ✅
+- Logs de auditoria mantidos por 12 meses. ✅
 
-### 5.16 PWA + Mobile
+### 5.16 PWA + Mobile ✅
 
-- Manifest + service worker com Workbox (ou next-pwa).
-- Splash screen, ícone, instalável.
+- Manifest + service worker. ✅
+- Ícone, instalável (banner de instalação). ✅
 - Notificações push: **fora do MVP** (complexo + Resend já cobre via email).
-- Layout mobile-first, breakpoints Tailwind padrão.
+- Layout mobile-first, breakpoints Tailwind padrão. ✅
 
-### 5.17 Internacionalização
+### 5.17 Internacionalização ✅
 
-- pt-BR (default), es, en.
-- Strings via `next-intl`.
-- Detecta idioma do browser; usuário pode trocar no perfil.
-- Times com nome em todos os idiomas no seed.
+- pt-BR (default), es, en. ✅
+- Sistema próprio de mensagens com `t()` e template interpolation. ✅
+- Detecta idioma do browser; usuário pode trocar no perfil. ✅
+- Times com nome em todos os idiomas no seed. ✅
 
-### 5.18 Modo escuro
+### 5.18 Modo escuro ✅
 
-- Toggle no header.
-- Persistência via cookie + `prefers-color-scheme`.
-- Paleta dark mode definida no design system (seção 6).
+- Toggle no header (light/dark/system). ✅
+- Persistência via cookie + `prefers-color-scheme`. ✅
+- Paleta dark mode definida no design system (seção 6). ✅
 
 ---
 
@@ -654,89 +647,97 @@ Cards com cantos arredondados (`rounded-2xl`), border sutil, hover com `scale-[1
 
 ## 7. Cron jobs e processamento
 
-| Job | Frequência | Descrição |
-|---|---|---|
-| `fetch-results` | A cada 5 min em dia de jogo, 1h fora | Busca resultados na API e atualiza `matches` |
-| `process-finished-matches` | Triggered (via Queues) | Calcula pontos quando jogo vira `finished` |
-| `compute-rankings` | A cada 2 min em dia de jogo | Atualiza `rankings_snapshot` |
-| `send-prediction-reminders` | A cada 1h | Avisa quem não palpitou pros próximos jogos |
-| `send-round-recap` | Diário, 23h local | Recap do dia: top 5, jogo da rodada, etc |
-| `cleanup-expired-tokens` | Diário | Limpa magic links expirados |
-| `hard-delete-soft-deleted` | Mensal | Apaga contas que pediram exclusão >30d |
-| `backup-d1` | Diário | Dump do D1 pra R2 |
+| Job | Frequência | Descrição | Status |
+|---|---|---|---|
+| `sync-results` | A cada 5 min | Busca resultados na API, atualiza jogos, calcula pontos e ranking | ✅ |
+| `send-prediction-reminders` | A cada 1h | Avisa quem não palpitou pros próximos jogos | ✅ |
+| `send-round-recap` | Diário, 23h UTC | Recap do dia: top 5, resultados | ✅ |
+| `cleanup-expired-tokens` | Diário | Limpa sessões expiradas | ❌ (não implementado) |
+| `hard-delete-soft-deleted` | Mensal | Apaga contas que pediram exclusão >30d | ❌ (não implementado) |
+| `backup-d1` | Diário | Dump do D1 pra R2 | ❌ (não implementado) |
 
 ---
 
 ## 8. APIs externas
 
-### 8.1 Football-Data.org (primária)
+### 8.1 Football-Data.org (primária) ✅
 
 - Free tier: 10 req/min, cobre Copa do Mundo.
-- Endpoint: `GET /v4/competitions/WC/matches`.
-- Adapter pattern: interface `ScoreProvider` com implementações trocáveis.
+- Endpoint: `GET /v4/competitions/WC/matches`. ✅
+- Adapter pattern: interface `ScoreProvider` com implementações trocáveis. ✅
 
-### 8.2 API-Football (RapidAPI) — fallback
+### 8.2 API-Football (RapidAPI) — fallback ❌ (não implementado)
 
 - Free tier: 100 req/dia.
 - Útil pra desempate de dados ou caso Football-Data.org tenha problema.
 
-### 8.3 Failsafe manual
+### 8.3 Failsafe manual ✅
 
-- Admin pode editar manualmente `home_score`, `away_score` e marcar jogo como `finished`.
-- Botão "Recalcular pontos" no painel admin.
+- Admin pode editar manualmente `home_score`, `away_score` e marcar jogo como `finished`. ✅
+- Botão "Recalcular pontos" no painel admin. ✅
 
 ---
 
 ## 9. Estrutura do repositório
 
 ```
-bolao-corporativo/
-├── README.md                 # Quickstart + botão "Deploy to Cloudflare"
-├── LICENSE                   # MIT
-├── .github/
-│   └── workflows/
-│       ├── ci.yml            # lint + typecheck + tests
-│       └── release.yml
-├── apps/
-│   └── web/                  # Next.js 15
-│       ├── app/
-│       │   ├── (auth)/       # login, verify
-│       │   ├── (app)/        # rotas autenticadas
-│       │   │   ├── jogos/
-│       │   │   ├── ranking/
-│       │   │   ├── grupos/
-│       │   │   ├── perfil/
-│       │   │   ├── regras/
-│       │   │   └── premios/
-│       │   ├── (admin)/
-│       │   │   └── admin/...
-│       │   └── api/
-│       ├── components/
-│       │   ├── ui/           # shadcn
-│       │   └── ...
-│       ├── lib/
-│       └── ...
-├── packages/
-│   ├── db/                   # Drizzle schema + migrations + seeds
-│   │   ├── schema.ts
-│   │   ├── migrations/
-│   │   └── seeds/
-│   │       ├── teams.ts
-│   │       └── group-stage-2026.ts
-│   ├── workers/              # Workers (API + crons)
-│   │   ├── api/
-│   │   ├── cron/
-│   │   └── queues/
-│   ├── emails/               # React Email templates
-│   └── shared/               # tipos, utils, validação (zod)
-├── docs/
-│   ├── INSTALL.md
-│   ├── CONFIGURATION.md
-│   ├── CONTRIBUTING.md
-│   └── ARCHITECTURE.md
-├── wrangler.toml
-├── package.json
-└── pnpm-workspace.yaml
+bolao-copa-do-mundo/
+├── README.md
+├── LICENSE                       # MIT
+├── prd.md                        # Este documento
+├── wrangler.toml                 # Cloudflare config (D1, KV, R2, crons)
+├── package.json                  # pnpm
+├── src/
+│   ├── app/                      # Next.js 15 App Router
+│   │   ├── (auth)/               # /login, /cadastro
+│   │   ├── (app)/                # Rotas autenticadas
+│   │   │   ├── home/
+│   │   │   ├── jogos/            # Palpites por dia
+│   │   │   ├── jogos/[matchId]/  # Detalhe + comments
+│   │   │   ├── palpites-especiais/
+│   │   │   ├── ranking/
+│   │   │   ├── grupos/           # Listar, criar, entrar
+│   │   │   ├── grupos/[id]/      # Detalhe do grupo
+│   │   │   ├── perfil/
+│   │   │   ├── regras/
+│   │   │   └── premios/
+│   │   ├── (admin)/              # /admin/* — painel superadmin
+│   │   │   └── admin/
+│   │   │       ├── configuracoes/
+│   │   │       ├── dominios/
+│   │   │       ├── usuarios/
+│   │   │       ├── jogos/
+│   │   │       ├── resultados-especiais/
+│   │   │       ├── regras/
+│   │   │       ├── premios/
+│   │   │       ├── broadcast/
+│   │   │       ├── auditoria/
+│   │   │       └── observabilidade/
+│   │   └── api/                  # API routes
+│   │       ├── cron/             # sync-results, reminders, recap
+│   │       ├── og/               # OG image generation
+│   │       ├── upload/           # Avatar upload
+│   │       ├── export-data/      # LGPD export
+│   │       └── health/
+│   ├── components/               # React components
+│   │   ├── ui/                   # shadcn/ui
+│   │   └── ...
+│   ├── lib/                      # Business logic
+│   │   ├── auth/                 # Session, password, domains
+│   │   ├── db/                   # Drizzle client (D1 + better-sqlite3)
+│   │   ├── scoring/              # Pontuação, engine, specials
+│   │   ├── badges/               # Badge evaluation
+│   │   ├── football-data/        # API client
+│   │   ├── email/                # Resend + templates
+│   │   ├── i18n/                 # Custom i18n (t(), messages)
+│   │   └── storage/              # R2 upload helpers
+│   └── worker/                   # Cloudflare scheduled handler
+│       └── scheduled.ts
+├── data/                         # SQLite local (dev)
+├── drizzle/                      # Migrations
+├── public/                       # Static assets, icons, SW
+└── docs/
+    └── DEPLOY.md                 # Deploy guide
 ```
 
 ---
@@ -748,75 +749,76 @@ bolao-corporativo/
 README.md inicia com:
 
 ```markdown
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/<user>/bolao-corporativo)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/victorrm/bolao-copa-do-mundo)
 ```
 
-Esse botão clona o repo, cria os recursos Cloudflare necessários (Workers, D1, KV, R2 buckets) e roda o setup script.
+Esse botão clona o repo, cria os recursos Cloudflare necessários (Workers, D1, KV, R2 buckets) e roda o setup via OpenNext. Após deploy, basta rodar `pnpm cf:migrate` para aplicar migrations.
 
-### 10.2 Setup script
+### 10.2 Primeiro acesso
 
-`scripts/setup.ts` interativo:
-1. Pede dados da empresa (nome, domínio principal, email do superadmin).
-2. Pede chaves Resend e API de resultados (com fallback de "configurar depois").
-3. Cria recursos via Wrangler API.
-4. Roda migrations e seeds.
-5. Gera senha temporária do superadmin e mostra no terminal.
-6. Imprime URL final.
+Não há setup script interativo. Basta acessar `/cadastro` e criar a primeira conta — ela vira superadmin automaticamente, e o domínio do email é adicionado à allowlist. Veja detalhes no README.
 
 ### 10.3 Variáveis de ambiente
 
 ```env
 # Auth
-SESSION_SECRET=
-SUPERADMIN_EMAIL=
+SESSION_SECRET=                # 32+ bytes random
 
-# Resend
+# Resend (opcional — sem isso, emails são logados no console)
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=bolao@empresa.com.br
 
-# APIs de resultados
-FOOTBALL_DATA_API_KEY=
-API_FOOTBALL_KEY=
+# API de resultados
+FOOTBALL_DATA_API_KEY=         # football-data.org
 
 # App
 APP_URL=https://bolao.empresa.com.br
 DEFAULT_LOCALE=pt-BR
 TIMEZONE=America/Sao_Paulo
+CRON_SECRET=                   # protege endpoints de cron
 ```
 
 ---
 
 ## 11. Roadmap
 
-### Fase 0 — Setup (semana 1)
-- Repositório, monorepo (pnpm + turborepo), CI básico
+### Fase 0 — Setup ✅ ENTREGUE
+- Repositório, monorepo (pnpm), CI básico
 - Schema D1 + migrations + seeds
-- Auth magic link funcional
+- Auth email + senha funcional (primeiro cadastro vira superadmin)
 - Deploy mínimo no Cloudflare
 
-### Fase 1 — MVP (semanas 2–4)
-- Cadastro de domínios
-- Palpites de fase de grupos
-- Cálculo de pontos + ranking geral
-- Painel superadmin (configurações, domínios, regras, prêmios)
-- LGPD básico
-- PWA
-- Deploy 1-clique
+### Fase 1 — MVP ✅ ENTREGUE
+- Cadastro de domínios permitidos (com wildcard)
+- Palpites de fase de grupos + mata-mata (com advancing team)
+- Cálculo de pontos configurável (3pts exato, 1pt vencedor, +1 mata-mata)
+- Ranking geral + ranking por grupo privado + tiebreakers
+- Painel superadmin completo (10 seções: dashboard, configurações de branding, domínios, usuários, jogos, resultados especiais, regras com editor de pontuação, prêmios com upload, broadcast, auditoria, observabilidade)
+- Palpites especiais pré-Copa (6 categorias com pontuação configurável)
+- LGPD: consentimento, exportação, exclusão de conta
+- PWA com modo escuro
+- Deploy 1-clique via Cloudflare
+- i18n completo (pt-BR, en, es)
+- Grupos privados com convite por código
 
-### Fase 2 — Engajamento (semana 5–6)
-- Grupos privados
-- Palpites especiais
-- Badges / gamificação
+### Fase 2 — Engajamento ✅ ENTREGUE
+- Badges (4 de 8 planejados: Tarólogo, Madrugador, Cravou, Zica)
 - Cards compartilháveis (OG images)
-- Comments leves
-- Notificações por email completas
+- Comments por jogo (1 por usuário, liberados após início, com moderação)
+- Notificações por email completas (Resend): lembrete de palpite, recap diário, broadcast admin
+- Cron jobs: sync de resultados, lembretes, recap
 
-### Fase 3 — Mata-mata (durante a Copa)
-- Estrutura de Rodada de 32 + oitavas + ... + final
-- Edição manual de jogos
-- Backup automático
+### Fase 3 — Mata-mata (durante a Copa) — PARCIAL
+- Estrutura de Rodada de 32 + oitavas + quartas + semi + 3º lugar + final ✅
+- Edição manual de jogos ✅
+- Backup automático D1 → R2 ❌
 
-### Fase 4 — Pós-Copa / v2 (futuro)
+### Fase 4 — Pós-Copa / v2 (futuro) — NÃO INICIADA
+- Magic link auth (melhoria UX sobre email+senha atual)
+- Ranking por rodada (página separada com filtro)
+- Badges restantes (Sequência Quente, Profeta, Líder, Conector)
+- Transferência de ownership de grupos
+- Backup automático D1 → R2
 - SSO Google Workspace / Azure AD
 - Multi-torneio (Brasileirão, Eurocopa, Copa América)
 - App nativo (Capacitor sobre PWA)
@@ -849,15 +851,15 @@ TIMEZONE=America/Sao_Paulo
 
 | Risco | Probabilidade | Impacto | Mitigação |
 |---|---|---|---|
-| API de resultados cair durante jogo importante | Média | Alto | Fallback API-Football + edição manual no admin |
-| Pico de tráfego em jogo do Brasil derruba D1 | Baixa | Alto | Cache agressivo no KV + cálculo assíncrono via Queues |
+| API de resultados cair durante jogo importante | Média | Alto | Edição manual no admin (fallback confirmado); API-Football planejado como segunda fonte |
+| Pico de tráfego em jogo do Brasil derruba D1 | Baixa | Alto | Cache agressivo em KV; cálculo síncrono dentro do cron handler |
 | Empresa subir credenciais no `.env.example` por engano | Média | Médio | Pre-commit hook + scanner de secrets no CI |
-| Senha do superadmin vazar | Baixa | Crítico | Argon2id + 2FA TOTP + audit log + alerta de login novo IP |
-| Spam de magic links a um email | Média | Baixo | Rate limit 5/h por email |
+| Senha do superadmin vazar | Baixa | Crítico | Scrypt hash + sessões httpOnly + audit log |
+| Spam de tentativas de login | Média | Baixo | Rate limit 5/15min por email |
 | Empresa esquece de configurar domínios | Alta no início | Médio | Setup script obriga 1 domínio mínimo |
 | Conluio entre usuários (compartilhar palpites) | Alta | Baixo | Comments só após início do jogo + log de IP |
 | Bug de cálculo de pontos descoberto tarde | Média | Crítico | Testes unitários extensivos do engine de pontuação + botão "recalcular tudo" |
-| Footbol-Data.org não cobrir Copa 2026 no free tier | Média | Alto | Validar antes do build; ter API-Football como fallback pago barato |
+| Football-Data.org não cobrir Copa 2026 no free tier | Média | Alto | Validar antes do build; edição manual no admin cobre emergências |
 
 ---
 
@@ -874,16 +876,17 @@ Recursos visuais (logos, ilustrações originais) podem ser licenciados em **CC-
 
 ## 15. Próximos passos sugeridos
 
-1. **Validar este PRD** — revisar e ajustar.
-2. **Criar repositório no GitHub** + estrutura de monorepo.
-3. **Implementar Fase 0** com Claude Code (~1 semana).
-4. **Confirmar grupos finais** da Copa 2026 (sorteio já ocorreu em 5/12/2025; falta apenas vencedores das repescagens em março/2026) e popular seed.
-5. **Convidar 2–3 empresas-piloto** pra testar antes de abrir o repositório publicamente.
-6. **Anunciar** em LinkedIn, Product Hunt, Hacker News e comunidades brasileiras de RH/Comunicação.
+1. ~~**Validar este PRD** — revisar e ajustar.~~ ✅
+2. ~~**Criar repositório no GitHub** + estrutura.~~ ✅
+3. ~~**Implementar Fase 0–2** (setup, MVP, engajamento).~~ ✅
+4. **Implementar prioridades restantes**: ranking por rodada, badges faltantes (4 de 8), backup D1→R2, transferência de ownership de grupos.
+5. **Confirmar grupos finais** da Copa 2026 (vencedores das repescagens em março/2026) e atualizar seed.
+6. **Convidar 2–3 empresas-piloto** pra testar antes de abrir o repositório publicamente.
+7. **Anunciar** em LinkedIn, Product Hunt, Hacker News e comunidades brasileiras de RH/Comunicação.
 
 ---
 
 **Autor**: Victor Rossini Magalhães — Fundador da Ozygen: AI Para SEO
-**Versão**: 1.0
-**Data**: Abril 2026
+**Versão**: 1.1 (atualizado para refletir estado atual da implementação)
+**Data**: Junho 2026
 **Licença do PRD**: CC-BY 4.0 (sinta-se livre pra adaptar)
