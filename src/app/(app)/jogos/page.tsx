@@ -24,7 +24,7 @@ const FILTERS = [
   { value: "mine", label: "Meus jogos" },
 ];
 
-const KNOCKOUT_STAGES = ["last_16", "quarter", "semi", "third", "final"];
+const KNOCKOUT_STAGES = ["r32", "r16", "qf", "sf", "3rd", "final"];
 
 export default async function JogosPage({ searchParams }: PageProps) {
   const session = await getCurrentSession();

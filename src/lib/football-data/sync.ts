@@ -61,6 +61,7 @@ function matchChanged(
     prev.awayScoreEt !== next.awayScoreEt ||
     prev.homeScorePen !== next.homeScorePen ||
     prev.awayScorePen !== next.awayScorePen ||
+    prev.winnerTeamId !== next.winnerTeamId ||
     prev.finishedAt !== next.finishedAt
   );
 }
@@ -203,6 +204,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       awayScoreEt: m.score.extraTime?.away ?? null,
       homeScorePen: m.score.penalties?.home ?? null,
       awayScorePen: m.score.penalties?.away ?? null,
+      winnerTeamId: m.score.winner === "HOME_TEAM" ? homeId : m.score.winner === "AWAY_TEAM" ? awayId : null,
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
 
@@ -242,6 +244,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
             awayScoreEt: fields.awayScoreEt,
             homeScorePen: fields.homeScorePen,
             awayScorePen: fields.awayScorePen,
+            winnerTeamId: fields.winnerTeamId,
             finishedAt: fields.finishedAt,
           },
         }),
