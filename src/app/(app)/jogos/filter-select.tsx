@@ -13,10 +13,9 @@ const OPTIONS = [
 interface Props {
   current: string;
   group: string;
-  view: string;
 }
 
-export function FilterSelect({ current, group, view }: Props) {
+export function FilterSelect({ current, group }: Props) {
   const router = useRouter();
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
@@ -24,7 +23,6 @@ export function FilterSelect({ current, group, view }: Props) {
     const val = e.target.value;
     if (val !== "all") sp.set("filter", val);
     if (val !== "knockout" && group !== "all") sp.set("group", group);
-    if (view !== "grid") sp.set("view", view);
     const qs = sp.toString();
     router.push(`/jogos${qs ? `?${qs}` : ""}`);
   }

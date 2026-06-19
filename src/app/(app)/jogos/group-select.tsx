@@ -7,17 +7,15 @@ interface Props {
   groupCodes: string[];
   current: string;
   filter: string;
-  view: string;
   disabled?: boolean;
 }
 
-export function GroupSelect({ groupCodes, current, filter, view, disabled }: Props) {
+export function GroupSelect({ groupCodes, current, filter, disabled }: Props) {
   const router = useRouter();
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const sp = new URLSearchParams();
     if (filter !== "all") sp.set("filter", filter);
-    if (view !== "grid") sp.set("view", view);
     if (e.target.value !== "all") sp.set("group", e.target.value);
     const qs = sp.toString();
     router.push(`/jogos${qs ? `?${qs}` : ""}`);

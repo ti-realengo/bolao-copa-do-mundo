@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { LayoutGrid, List, TrendingUp, ArrowRight, ChevronDown, CheckCircle2, MinusCircle, Target } from "lucide-react";
+import { TrendingUp, ArrowRight, ChevronDown, CheckCircle2, MinusCircle, Target } from "lucide-react";
 import { db, schema } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
@@ -15,7 +15,7 @@ import { brDateKey, brDateFormat } from "@/lib/date";
 export const dynamic = "force-dynamic";
 
 interface PageProps {
-  searchParams: Promise<{ filter?: string; group?: string; view?: string }>;
+  searchParams: Promise<{ filter?: string; group?: string }>;
 }
 
 
@@ -29,7 +29,6 @@ export default async function JogosPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const filter = params.filter ?? "all";
   const group = params.group ?? "all";
-  const view = params.view === "list" ? "list" : "grid";
 
   const home = alias(schema.teams, "home");
   const away = alias(schema.teams, "away");
@@ -152,12 +151,7 @@ export default async function JogosPage({ searchParams }: PageProps) {
         <h2 className="font-display text-lg font-semibold capitalize text-brand-text">
           {dayLabel ?? dayFormatter.format(new Date(dayKey + "T12:00:00Z"))}
         </h2>
-        <div
-          className={cn(
-            "grid gap-3",
-            view === "grid" ? "md:grid-cols-2" : "grid-cols-1",
-          )}
-        >
+        <div className="grid gap-3 md:grid-cols-2">
           {dayMatches.map((r) => (
             <MatchCard
               key={r.match.id}
@@ -185,9 +179,8 @@ export default async function JogosPage({ searchParams }: PageProps) {
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <FilterSelect current={filter} group={group} view={view} />
-            <GroupSelect groupCodes={groupCodes} current={group} filter={filter} view={view} disabled={filter === "knockout"} />
-            <ViewToggle view={view} filter={filter} group={group} />
+            <FilterSelect current={filter} group={group} />
+            <GroupSelect groupCodes={groupCodes} current={group} filter={filter} disabled={filter === "knockout"} />
           </div>
         </div>
 
@@ -204,7 +197,7 @@ export default async function JogosPage({ searchParams }: PageProps) {
                   <h2 className="font-display text-lg font-semibold capitalize text-brand-text">
                     {dayFormatter.format(new Date(dayKey + "T12:00:00Z"))}
                   </h2>
-                  <div className={cn("grid gap-3", view === "grid" ? "md:grid-cols-2" : "grid-cols-1")}>
+                  <div className="grid gap-3 md:grid-cols-2">
                     {dayMatches.map((r) => {
                       const pred = predByMatch.get(r.match.id);
                       const isFinished = r.match.status === "finished";
@@ -373,43 +366,6 @@ export default async function JogosPage({ searchParams }: PageProps) {
         />
         <UpcomingPredictionsWidget rows={nextWithPredictions} />
       </aside>
-    </div>
-  );
-}
-
-function ViewToggle({ view, filter, group }: { view: string; filter: string; group: string }) {
-  const sp = new URLSearchParams();
-  if (filter !== "all") sp.set("filter", filter);
-  if (group !== "all") sp.set("group", group);
-  const gridHref = `/jogos${sp.toString() ? `?${sp.toString()}` : ""}`;
-  sp.set("view", "list");
-  const listHref = `/jogos?${sp.toString()}`;
-  return (
-    <div className="inline-flex rounded-xl border border-brand-border bg-brand-card p-1">
-      <Link
-        href={gridHref}
-        className={cn(
-          "p-1.5 rounded-lg transition-colors",
-          view === "grid"
-            ? "bg-brand-surface-2 text-brand-text"
-            : "text-brand-text-muted hover:text-brand-text",
-        )}
-        aria-label="Grid"
-      >
-        <LayoutGrid className="h-4 w-4" />
-      </Link>
-      <Link
-        href={listHref}
-        className={cn(
-          "p-1.5 rounded-lg transition-colors",
-          view === "list"
-            ? "bg-brand-surface-2 text-brand-text"
-            : "text-brand-text-muted hover:text-brand-text",
-        )}
-        aria-label="Lista"
-      >
-        <List className="h-4 w-4" />
-      </Link>
     </div>
   );
 }

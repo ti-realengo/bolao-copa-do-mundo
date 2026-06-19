@@ -113,7 +113,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0">
       <header>
         <h1 className="font-display text-3xl md:text-4xl font-bold">Histórico de Palpites</h1>
         <p className="text-brand-text-muted mt-1.5 text-sm md:text-base">
@@ -121,7 +121,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
         </p>
       </header>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-2xl border border-brand-border bg-brand-card p-4 text-center">
           <div className="flex items-center justify-center mb-1">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary/15 text-brand-primary">
@@ -216,7 +216,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
                 <div
                   key={r.match.id}
                   className={cn(
-                    "rounded-2xl border bg-brand-card p-4 sm:p-5 transition-all",
+                    "rounded-2xl border bg-brand-card p-4 sm:p-5 transition-all min-w-0",
                     isExact && "border-green-500/40",
                     isWinnerCorrect && !isExact && "border-yellow-500/40",
                     !isExact && !isWinnerCorrect && "border-brand-border",

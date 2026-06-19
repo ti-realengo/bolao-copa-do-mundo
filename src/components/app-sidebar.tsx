@@ -212,7 +212,7 @@ function NextRoundCountdown({ start }: { start: number }) {
 
   return (
     <div className="rounded-2xl border border-brand-border bg-brand-card p-4">
-      <p className="text-xs text-brand-text-muted mb-3">Faltam para a próxima rodada</p>
+      <p className="text-xs text-brand-text-muted mb-3">Faltam para o próximo jogo</p>
       <div className="grid grid-cols-4 gap-1.5 text-center mb-3">
         <CountdownCell value={days} label="DIAS" />
         <CountdownCell value={hours} label="HORAS" />
