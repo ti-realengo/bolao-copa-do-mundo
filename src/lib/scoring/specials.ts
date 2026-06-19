@@ -2,6 +2,7 @@ import { db, runBatch, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { DEFAULT_SCORING, loadScoringConfig, type ScoringConfig } from "./config";
 import { log } from "@/lib/observability/logger";
+import { evaluateProfeta } from "@/lib/badges/evaluate";
 
 const BATCH_CHUNK = 50;
 
@@ -101,5 +102,8 @@ export async function recomputeAllSpecials(): Promise<Map<string, number>> {
   }
 
   log.info("scoring.recomputeAllSpecials.done", { userCount: all.length });
+
+  await evaluateProfeta();
+
   return computed;
 }

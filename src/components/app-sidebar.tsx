@@ -9,6 +9,7 @@ import {
   Target,
   Users,
   BarChart3,
+  BarChart2,
   Sparkles,
   ScrollText,
   ChevronRight,
@@ -21,6 +22,8 @@ import {
   UserCog,
   ListChecks,
   Activity,
+  Database,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
@@ -50,7 +53,9 @@ const PARTICIPANT_NAV: NavGroup = {
     { href: "/jogos?filter=mine", label: "Meus palpites", icon: Trophy },
     { href: "/grupos", label: "Grupos", icon: Users },
     { href: "/ranking", label: "Ranking", icon: BarChart3 },
+    { href: "/ranking/rodada", label: "Ranking por rodada", icon: BarChart2 },
     { href: "/palpites-especiais", label: "Especiais", icon: Sparkles },
+    { href: "/historico", label: "Hist\u00f3rico", icon: History },
     { href: "/regras", label: "Regulamento", icon: ScrollText },
   ],
 };
@@ -68,6 +73,7 @@ const ADMIN_NAV: NavGroup = {
     { href: "/admin/usuarios", label: "Usuários", icon: UserCog },
     { href: "/admin/auditoria", label: "Auditoria", icon: ListChecks },
     { href: "/admin/observabilidade", label: "Observabilidade", icon: Activity },
+    { href: "/admin/backup", label: "Backup", icon: Database },
   ],
 };
 

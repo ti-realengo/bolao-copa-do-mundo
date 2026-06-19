@@ -13,6 +13,7 @@ import {
   Target,
   Users,
   BarChart3,
+  BarChart2,
   Sparkles,
   ScrollText,
   LogOut,
@@ -26,6 +27,7 @@ import {
   UserCog,
   ListChecks,
   Activity,
+  History,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";
@@ -45,8 +47,10 @@ const TABS = [
   { href: "/jogos", label: "Jogos" },
   { href: "/jogos?filter=mine", label: "Palpites" },
   { href: "/ranking", label: "Ranking" },
+  { href: "/ranking/rodada", label: "Rodada" },
   { href: "/grupos", label: "Grupos" },
   { href: "/palpites-especiais", label: "Especiais" },
+  { href: "/historico", label: "Hist\u00f3rico" },
 ];
 
 const MOBILE_NAV = [
@@ -55,7 +59,9 @@ const MOBILE_NAV = [
   { href: "/jogos?filter=mine", label: "Meus palpites", icon: Trophy },
   { href: "/grupos", label: "Grupos", icon: Users },
   { href: "/ranking", label: "Ranking", icon: BarChart3 },
+  { href: "/ranking/rodada", label: "Ranking por rodada", icon: BarChart2 },
   { href: "/palpites-especiais", label: "Especiais", icon: Sparkles },
+  { href: "/historico", label: "Hist\u00f3rico", icon: History },
   { href: "/regras", label: "Regulamento", icon: ScrollText },
 ];
 

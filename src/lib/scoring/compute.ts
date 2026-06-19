@@ -3,7 +3,7 @@ import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { scorePrediction } from "./engine";
 import { recomputeAllSpecials, getStoredSpecialPoints } from "./specials";
 import { loadScoringConfig } from "./config";
-import { evaluateBadgesAfterMatch } from "@/lib/badges/evaluate";
+import { evaluateBadgesAfterMatch, evaluateLeaderBadge } from "@/lib/badges/evaluate";
 import { log } from "@/lib/observability/logger";
 
 const BATCH_CHUNK = 50;
@@ -148,5 +148,8 @@ export async function refreshRankingsSnapshot(
   }
 
   log.info("scoring.refreshRankingsSnapshot.done", { userCount: entries.length });
+
+  await evaluateLeaderBadge();
+
   return entries.length;
 }

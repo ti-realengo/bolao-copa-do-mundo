@@ -86,10 +86,10 @@ Já entregue:
 - Palpites de placar pra todos os jogos (fase de grupos + mata-mata com advancing team)
 - Palpites especiais pré-Copa (campeão, vice, 3º, artilheiro, eliminada, surpresa)
 - Sistema de pontuação configurável (placar exato, vencedor, bônus mata-mata)
-- Ranking geral + ranking por grupo privado + tiebreakers
+- Ranking geral + ranking por rodada + ranking por grupo privado + tiebreakers
 - Grupos privados com convite por código
-- Painel superadmin completo (10 seções: dashboard, configurações, domínios, usuários, jogos, resultados especiais, regras, prêmios, broadcast, auditoria, observabilidade)
-- Badges (Tarólogo, Madrugador, Cravou, Zica)
+- Painel superadmin completo (11 seções: dashboard, configurações, domínios, usuários, jogos, resultados especiais, regras, prêmios, broadcast, auditoria, observabilidade, backup)
+- Badges (Tarólogo, Madrugador, Cravou, Zica, Sequência Quente, Profeta, Líder, Conector)
 - Cards compartilháveis (OG images)
 - Comments por jogo com moderação
 - Notificações por email (Resend): lembrete de palpite, recap diário, broadcast admin
@@ -98,12 +98,12 @@ Já entregue:
 - LGPD: consentimento, exportação de dados, exclusão de conta
 - Cron jobs: sync de resultados, lembretes, recap
 - Deploy via OpenNext + cron triggers
+- Mata-mata com "Quem passa?" (advancing team), winner highlight e resultados exibidos
+- Histórico de palpites com filtros por fase e resumo de desempenho
+- Backup manual D1 → R2 pelo painel admin
 
 Próximas prioridades:
 
-- Ranking por rodada (página separada com filtro)
-- Badges restantes (Sequência Quente, Profeta, Líder, Conector)
-- Backup automático D1 → R2
 - Transferência de ownership de grupos
 
 Em pesquisa (v2 pós-Copa):

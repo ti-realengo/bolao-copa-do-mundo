@@ -6,6 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { nanoid } from "nanoid";
 import { z } from "zod";
+import { evaluateConectorBadge } from "@/lib/badges/evaluate";
 
 const CreateSchema = z.object({
   name: z.string().min(2).max(60),
@@ -52,6 +53,7 @@ export async function createLeague(input: unknown): Promise<{ ok: boolean; error
     userId: session.user.id,
     joinedAt: now,
   });
+  await evaluateConectorBadge(session.user.id);
   redirect(`/grupos/${id}`);
 }
 
@@ -92,6 +94,7 @@ export async function joinLeague(input: unknown): Promise<{ ok: boolean; error?:
       userId: session.user.id,
       joinedAt: Math.floor(Date.now() / 1000),
     });
+    await evaluateConectorBadge(league.ownerId);
   }
 
   return { ok: true, leagueId: league.id };
