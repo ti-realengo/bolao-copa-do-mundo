@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Lock, MapPin } from "lucide-react";
+import { ArrowRight, Lock, MapPin, CheckCircle2, MinusCircle, Target } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { savePrediction } from "./actions";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ interface Props {
   home: Team | null;
   away: Team | null;
   prediction: Prediction | null;
+  advancingTeam?: Team | null;
 }
 
 const DEADLINE_OFFSET_SECONDS = 15 * 60;
@@ -36,9 +37,11 @@ function stageLabel(match: Match) {
   return map[match.stage] ?? match.stage.toUpperCase();
 }
 
-export function MatchCard({ match, home, away, prediction }: Props) {
+export function MatchCard({ match, home, away, prediction, advancingTeam }: Props) {
   const isKnockout = KNOCKOUT_STAGES.has(match.stage);
   const hasTeams = home != null && away != null;
+  const isFinished = match.status === "finished";
+  const hasResult = isFinished && match.homeScore != null && match.awayScore != null;
 
   const [homeScore, setHomeScore] = useState<string>(prediction ? String(prediction.homeScore) : "");
   const [awayScore, setAwayScore] = useState<string>(prediction ? String(prediction.awayScore) : "");
@@ -58,7 +61,7 @@ export function MatchCard({ match, home, away, prediction }: Props) {
 
     const h = Number(homeScore);
     const a = Number(awayScore);
-    if (!Number.isInteger(h) || !Number.isInteger(a) || h < 0 || a < 0 || h > 20 || a > 20) return;
+    if (!Number.isInteger(h) || !Number.isInteger(a) || h < 0 || a > 20) return;
 
     const advId = advancingTeamId ? Number(advancingTeamId) : null;
     if (
@@ -93,14 +96,37 @@ export function MatchCard({ match, home, away, prediction }: Props) {
     minute: "2-digit",
   });
 
-  const showResultBadge = match.status === "finished" && match.homeScore != null && match.awayScore != null;
+  const isExact = prediction?.isExact ?? false;
+  const isWinnerCorrect = prediction?.isWinnerCorrect ?? false;
+  const points = prediction?.points ?? null;
+  const hasEvaluatedPrediction = prediction != null && points != null;
+
+  let resultColor: string;
+  let resultIcon: React.ReactNode;
+  let resultLabel: string;
+  if (isExact) {
+    resultColor = "text-green-500";
+    resultIcon = <CheckCircle2 className="h-4 w-4" />;
+    resultLabel = "Cravada!";
+  } else if (isWinnerCorrect) {
+    resultColor = "text-yellow-500";
+    resultIcon = <Target className="h-4 w-4" />;
+    resultLabel = "Vencedor certo";
+  } else {
+    resultColor = "text-brand-text-muted";
+    resultIcon = <MinusCircle className="h-4 w-4" />;
+    resultLabel = "Errou";
+  }
 
   return (
     <div
       className={cn(
-        "rounded-2xl border bg-brand-card p-4 sm:p-5 transition-all",
-        "border-brand-border hover:border-brand-border-strong",
-        prediction && !isLocked && "border-brand-primary/30",
+        "rounded-2xl border bg-brand-card p-4 sm:p-5 transition-all min-w-0 overflow-hidden",
+        hasResult && hasEvaluatedPrediction && isExact && "border-green-500/40",
+        hasResult && hasEvaluatedPrediction && !isExact && isWinnerCorrect && "border-yellow-500/40",
+        hasResult && hasEvaluatedPrediction && !isExact && !isWinnerCorrect && "border-brand-border",
+        !hasResult && "border-brand-border hover:border-brand-border-strong",
+        prediction && !isLocked && !hasResult && "border-brand-primary/30",
       )}
     >
       <div className="flex items-center justify-between mb-4 text-xs">
@@ -113,72 +139,40 @@ export function MatchCard({ match, home, away, prediction }: Props) {
       <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           {home?.flagUrl ? (
-            <Image
-              src={home.flagUrl}
-              alt=""
-              width={28}
-              height={20}
-              className="rounded-sm shrink-0 shadow-sm"
-            />
+            <Image src={home.flagUrl} alt="" width={28} height={20} className="rounded-sm shrink-0 shadow-sm" />
           ) : (
             <span className="h-5 w-7 rounded-sm bg-brand-surface-2 shrink-0" />
           )}
-          <span className="font-medium truncate text-sm sm:text-base">
-            {home?.namePt ?? "—"}
-          </span>
+          <span className="font-medium truncate text-sm sm:text-base">{home?.namePt ?? "—"}</span>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {showResultBadge ? (
+        <div className="flex items-center gap-1.5 shrink-0">
+          {hasResult ? (
             <>
-              <span className={cn(
-                "w-11 sm:w-12 h-11 flex items-center justify-center text-center font-display font-bold text-base rounded-xl bg-brand-surface-2",
-                match.winnerTeamId === match.homeTeamId && "bg-brand-primary/15 text-brand-primary",
-              )}>{match.homeScore}</span>
+              <span className={cn("w-11 sm:w-12 h-11 flex items-center justify-center text-center font-display font-bold text-base rounded-xl", match.winnerTeamId === match.homeTeamId ? "bg-brand-primary/15 text-brand-primary" : "bg-brand-surface-2")}>{match.homeScore}</span>
               <span className="text-brand-text-muted text-sm">x</span>
-              <span className={cn(
-                "w-11 sm:w-12 h-11 flex items-center justify-center text-center font-display font-bold text-base rounded-xl bg-brand-surface-2",
-                match.winnerTeamId === match.awayTeamId && "bg-brand-primary/15 text-brand-primary",
-              )}>{match.awayScore}</span>
+              <span className={cn("w-11 sm:w-12 h-11 flex items-center justify-center text-center font-display font-bold text-base rounded-xl", match.winnerTeamId === match.awayTeamId ? "bg-brand-primary/15 text-brand-primary" : "bg-brand-surface-2")}>{match.awayScore}</span>
             </>
           ) : (
             <>
-              <ScoreInput
-                value={homeScore}
-                onChange={setHomeScore}
-                disabled={isLocked}
-                label={`Placar ${home?.namePt ?? "casa"}`}
-              />
+              <ScoreInput value={homeScore} onChange={setHomeScore} disabled={isLocked} label={`Placar ${home?.namePt ?? "casa"}`} />
               <span className="text-brand-text-muted text-sm">x</span>
-              <ScoreInput
-                value={awayScore}
-                onChange={setAwayScore}
-                disabled={isLocked}
-                label={`Placar ${away?.namePt ?? "fora"}`}
-              />
+              <ScoreInput value={awayScore} onChange={setAwayScore} disabled={isLocked} label={`Placar ${away?.namePt ?? "fora"}`} />
             </>
           )}
         </div>
 
         <div className="flex items-center gap-2.5 justify-end min-w-0">
-          <span className="font-medium truncate text-right text-sm sm:text-base">
-            {away?.namePt ?? "—"}
-          </span>
+          <span className="font-medium truncate text-right text-sm sm:text-base">{away?.namePt ?? "—"}</span>
           {away?.flagUrl ? (
-            <Image
-              src={away.flagUrl}
-              alt=""
-              width={28}
-              height={20}
-              className="rounded-sm shrink-0 shadow-sm"
-            />
+            <Image src={away.flagUrl} alt="" width={28} height={20} className="rounded-sm shrink-0 shadow-sm" />
           ) : (
             <span className="h-5 w-7 rounded-sm bg-brand-surface-2 shrink-0" />
           )}
         </div>
       </div>
 
-      {isKnockout && hasTeams && !showResultBadge && (
+      {isKnockout && hasTeams && !hasResult && (
         <div className="mt-3">
           <label className="text-xs text-brand-text-muted block mb-1.5">
             Quem passa? {isLocked ? "(trancado)" : ""}
@@ -201,9 +195,46 @@ export function MatchCard({ match, home, away, prediction }: Props) {
         </div>
       )}
 
-      {isKnockout && hasTeams && showResultBadge && match.winnerTeamId && (
+      {isKnockout && hasResult && match.winnerTeamId && (
         <div className="mt-2.5 text-xs text-brand-primary font-medium text-center">
           Classificou: {match.winnerTeamId === home?.id ? home.namePt : away?.namePt}
+        </div>
+      )}
+
+      {hasResult && prediction && (
+        <div className="mt-3 pt-3 border-t border-brand-border">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-brand-text-muted">Seu palpite</span>
+            <div className="flex items-center gap-1.5">
+              <span className={cn("font-mono font-semibold", isExact ? "text-green-500" : "text-brand-text")}>{prediction.homeScore}</span>
+              <span className="text-brand-text-muted">x</span>
+              <span className={cn("font-mono font-semibold", isExact ? "text-green-500" : "text-brand-text")}>{prediction.awayScore}</span>
+            </div>
+          </div>
+          {isKnockout && prediction.advancingTeamId != null && (
+            <div className="mt-1 text-xs text-brand-text-muted text-center">
+              → {advancingTeam?.namePt ?? "?"}
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasResult && hasEvaluatedPrediction && (
+        <div className="mt-3 pt-3 border-t border-brand-border flex items-center justify-between">
+          <div className={cn("flex items-center gap-1.5 text-sm font-semibold", resultColor)}>
+            {resultIcon}
+            <span>{resultLabel}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="font-display font-bold text-lg text-brand-text">{points}</span>
+            <span className="text-xs text-brand-text-muted">pts</span>
+          </div>
+        </div>
+      )}
+
+      {hasResult && !prediction && (
+        <div className="mt-3 pt-3 border-t border-brand-border text-xs text-brand-text-muted text-center">
+          Sem palpite
         </div>
       )}
 
@@ -217,10 +248,10 @@ export function MatchCard({ match, home, away, prediction }: Props) {
           )}
         </span>
         <div className="flex items-center gap-3 shrink-0">
-          {!isLocked && status === "saving" && <span className="text-brand-text-muted">Salvando…</span>}
-          {!isLocked && status === "saved" && <span className="text-brand-primary">✓ Salvo</span>}
-          {!isLocked && status === "error" && <span className="text-brand-danger">Erro ao salvar</span>}
-          {isLocked && (
+          {!hasResult && !isLocked && status === "saving" && <span className="text-brand-text-muted">Salvando…</span>}
+          {!hasResult && !isLocked && status === "saved" && <span className="text-brand-primary">✓ Salvo</span>}
+          {!hasResult && !isLocked && status === "error" && <span className="text-brand-danger">Erro ao salvar</span>}
+          {isLocked && !hasResult && (
             <span className="flex items-center gap-1 text-brand-text-muted">
               <Lock className="h-3 w-3" />
               Trancado

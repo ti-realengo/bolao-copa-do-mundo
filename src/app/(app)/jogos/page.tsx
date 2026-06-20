@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { TrendingUp, ArrowRight, ChevronDown, CheckCircle2, MinusCircle, Target } from "lucide-react";
+import { TrendingUp, ArrowRight, ChevronDown } from "lucide-react";
 import { db, schema } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
@@ -98,11 +98,6 @@ export default async function JogosPage({ searchParams }: PageProps) {
     month: "long",
   });
 
-  const timeFmt = brDateFormat({
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
   const groupCodes = Array.from(
     new Set(rows.map((r) => r.match.groupCode).filter(Boolean) as string[]),
   ).sort();
@@ -159,6 +154,11 @@ export default async function JogosPage({ searchParams }: PageProps) {
               home={r.home}
               away={r.away}
               prediction={predByMatch.get(r.match.id) ?? null}
+              advancingTeam={(() => {
+                const p = predByMatch.get(r.match.id);
+                if (p?.advancingTeamId != null) return advancingTeams.get(p.advancingTeamId) ?? null;
+                return null;
+              })()}
             />
           ))}
         </div>
@@ -192,141 +192,7 @@ export default async function JogosPage({ searchParams }: PageProps) {
               Histórico ({pastMatchCount} {pastMatchCount === 1 ? "jogo" : "jogos"})
             </summary>
             <div className="mt-4 space-y-6">
-              {pastEntries.map(([dayKey, dayMatches]) => (
-                <section key={dayKey} className="space-y-3">
-                  <h2 className="font-display text-lg font-semibold capitalize text-brand-text">
-                    {dayFormatter.format(new Date(dayKey + "T12:00:00Z"))}
-                  </h2>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {dayMatches.map((r) => {
-                      const pred = predByMatch.get(r.match.id);
-                      const isFinished = r.match.status === "finished";
-                      const isKnockout = KNOCKOUT_STAGES.includes(r.match.stage);
-                      const stageLabelText = (() => {
-                        if (r.match.stage === "group") return `Grupo ${r.match.groupCode ?? ""} • Rodada ${r.match.round ?? ""}`.trim();
-                        const map: Record<string, string> = {
-                          r32: "Rodada de 32",
-                          r16: "Oitavas de final",
-                          qf: "Quartas de final",
-                          sf: "Semifinal",
-                          "3rd": "Disputa de 3º lugar",
-                          final: "Final",
-                        };
-                        return map[r.match.stage] ?? r.match.stage.toUpperCase();
-                      })();
-
-                      if (!isFinished || !pred || pred.points == null) {
-                        return (
-                          <div key={r.match.id} className="rounded-2xl border border-brand-border bg-brand-card p-4 sm:p-5">
-                            <div className="flex items-center justify-between mb-3 text-xs">
-                              <span className="text-brand-text-muted">{stageLabelText}</span>
-                              <span className="font-mono font-medium text-brand-text">{timeFmt.format(new Date(r.match.scheduledAt * 1000))}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 min-w-0 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <span className="font-medium truncate text-sm">{r.home?.namePt ?? "—"}</span>
-                                  {r.home?.flagUrl && <Image src={r.home.flagUrl} alt="" width={22} height={15} className="rounded-[2px] shrink-0" />}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="w-9 h-9 flex items-center justify-center font-display font-bold text-sm rounded-xl bg-brand-surface-2">{r.match.homeScore ?? "-"}</span>
-                                <span className="text-brand-text-muted text-xs">x</span>
-                                <span className="w-9 h-9 flex items-center justify-center font-display font-bold text-sm rounded-xl bg-brand-surface-2">{r.match.awayScore ?? "-"}</span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  {r.away?.flagUrl && <Image src={r.away.flagUrl} alt="" width={22} height={15} className="rounded-[2px] shrink-0" />}
-                                  <span className="font-medium truncate text-sm">{r.away?.namePt ?? "—"}</span>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-2 text-xs text-brand-text-muted text-center">Sem palpite avaliado</div>
-                          </div>
-                        );
-                      }
-
-                      const isExact = pred.isExact;
-                      const isWinnerCorrect = pred.isWinnerCorrect;
-                      const points = pred.points ?? 0;
-
-                      let resultColor: string;
-                      let resultIcon: React.ReactNode;
-                      if (isExact) {
-                        resultColor = "text-green-500";
-                        resultIcon = <CheckCircle2 className="h-4 w-4" />;
-                      } else if (isWinnerCorrect) {
-                        resultColor = "text-yellow-500";
-                        resultIcon = <Target className="h-4 w-4" />;
-                      } else {
-                        resultColor = "text-brand-text-muted";
-                        resultIcon = <MinusCircle className="h-4 w-4" />;
-                      }
-
-                      return (
-                        <div key={r.match.id} className={cn(
-                          "rounded-2xl border bg-brand-card p-4 sm:p-5 transition-all",
-                          isExact && "border-green-500/40",
-                          isWinnerCorrect && !isExact && "border-yellow-500/40",
-                          !isExact && !isWinnerCorrect && "border-brand-border",
-                        )}>
-                          <div className="flex items-center justify-between mb-3 text-xs">
-                            <span className="text-brand-text-muted">{stageLabelText}</span>
-                            <span className="font-mono font-medium text-brand-text">{timeFmt.format(new Date(r.match.scheduledAt * 1000))}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 min-w-0 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <span className="font-medium truncate text-sm">{r.home?.namePt ?? "—"}</span>
-                                {r.home?.flagUrl && <Image src={r.home.flagUrl} alt="" width={22} height={15} className="rounded-[2px] shrink-0" />}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className={cn("w-9 h-9 flex items-center justify-center font-display font-bold text-sm rounded-xl", r.match.winnerTeamId === r.match.homeTeamId ? "bg-brand-primary/15 text-brand-primary" : "bg-brand-surface-2")}>{r.match.homeScore ?? "-"}</span>
-                              <span className="text-brand-text-muted text-xs">x</span>
-                              <span className={cn("w-9 h-9 flex items-center justify-center font-display font-bold text-sm rounded-xl", r.match.winnerTeamId === r.match.awayTeamId ? "bg-brand-primary/15 text-brand-primary" : "bg-brand-surface-2")}>{r.match.awayScore ?? "-"}</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                {r.away?.flagUrl && <Image src={r.away.flagUrl} alt="" width={22} height={15} className="rounded-[2px] shrink-0" />}
-                                <span className="font-medium truncate text-sm">{r.away?.namePt ?? "—"}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="mt-3 pt-3 border-t border-brand-border">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="text-brand-text-muted">Seu palpite</span>
-                              <div className="flex items-center gap-1.5">
-                                <span className={cn("font-mono font-semibold", isExact ? "text-green-500" : "text-brand-text")}>{pred.homeScore}</span>
-                                <span className="text-brand-text-muted">x</span>
-                                <span className={cn("font-mono font-semibold", isExact ? "text-green-500" : "text-brand-text")}>{pred.awayScore}</span>
-                                {isKnockout && pred.advancingTeamId != null && (
-                                  <span className="text-brand-text-muted">&rarr; {advancingTeams.get(pred.advancingTeamId)?.namePt ?? "?"}</span>
-                                )}
-                              </div>
-                            </div>
-                            {isKnockout && r.match.winnerTeamId && (
-                              <div className="mt-1 text-xs text-brand-primary font-medium text-center">
-                                Classificou: {r.match.winnerTeamId === r.match.homeTeamId ? r.home?.namePt : r.away?.namePt}
-                              </div>
-                            )}
-                          </div>
-                          <div className="mt-3 pt-3 border-t border-brand-border flex items-center justify-between">
-                            <div className={cn("flex items-center gap-1.5 text-sm font-semibold", resultColor)}>
-                              {resultIcon}
-                              <span>{isExact ? "Cravada!" : isWinnerCorrect ? "Vencedor certo" : "Errou"}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="font-display font-bold text-lg text-brand-text">{points}</span>
-                              <span className="text-xs text-brand-text-muted">pts</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
+              {pastEntries.map(([dayKey, dayMatches]) => renderDaySection(dayKey, dayMatches))}
             </div>
           </details>
         )}

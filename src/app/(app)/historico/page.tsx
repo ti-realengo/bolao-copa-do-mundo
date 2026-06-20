@@ -216,7 +216,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
                 <div
                   key={r.match.id}
                   className={cn(
-                    "rounded-2xl border bg-brand-card p-4 sm:p-5 transition-all min-w-0",
+                    "rounded-2xl border bg-brand-card p-4 sm:p-5 transition-all min-w-0 overflow-hidden",
                     isExact && "border-green-500/40",
                     isWinnerCorrect && !isExact && "border-yellow-500/40",
                     !isExact && !isWinnerCorrect && "border-brand-border",
