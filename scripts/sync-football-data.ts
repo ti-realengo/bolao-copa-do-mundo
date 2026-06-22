@@ -115,6 +115,7 @@ async function main() {
       awayScoreEt: m.score.extraTime?.away ?? null,
       homeScorePen: m.score.penalties?.home ?? null,
       awayScorePen: m.score.penalties?.away ?? null,
+      winnerTeamId: m.score.winner === "HOME_TEAM" ? homeId : m.score.winner === "AWAY_TEAM" ? awayId : null,
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
     if (existing.length > 0) {

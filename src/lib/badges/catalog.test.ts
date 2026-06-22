@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { BADGES } from "./catalog";
 
 describe("BADGES catalog", () => {
-  it("has 4 unique badges with required fields", () => {
+  it("has 8 unique badges with required fields", () => {
     const codes = Object.keys(BADGES);
-    expect(codes.length).toBe(4);
+    expect(codes.length).toBe(8);
     expect(new Set(codes).size).toBe(codes.length);
     for (const b of Object.values(BADGES)) {
       expect(b.code).toBeTruthy();

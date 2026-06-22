@@ -177,7 +177,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
   // ── 6. Match upserts — batched via runBatch() ──
   let inserted = 0;
   let updated = 0;
-  const newlyFinishedIds: number[] = [];
+  const needsScoringIds: number[] = [];
 
   const matchOps: (typeof schema.matches.$inferInsert)[] = [];
   for (const m of data.matches) {
@@ -210,9 +210,20 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
 
     const existing = matchByExtId.get(externalId);
 
-    // Detect newly-finished matches (regardless of whether we write them).
+    // Detect matches that need re-scoring:
+    // (a) newly-finished (status transition scheduled/in-play → finished)
+    // (b) already-finished but score/winner changed by the API (corrections)
     if (existing && status === "finished" && existing.status !== "finished") {
-      newlyFinishedIds.push(existing.id);
+      needsScoringIds.push(existing.id);
+    } else if (
+      existing &&
+      existing.status === "finished" &&
+      status === "finished" &&
+      (existing.homeScore !== fields.homeScore ||
+        existing.awayScore !== fields.awayScore ||
+        existing.winnerTeamId !== fields.winnerTeamId)
+    ) {
+      needsScoringIds.push(existing.id);
     }
 
     // Only write when new or actually changed — most runs touch nothing.
@@ -254,7 +265,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
 
   // ── 7. Compute points for newly finished matches ──
   let pointsRecomputed = 0;
-  for (const mid of newlyFinishedIds) {
+  for (const mid of needsScoringIds) {
     await computeMatchPoints(mid);
     pointsRecomputed++;
   }
@@ -266,6 +277,7 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     matchesInserted: inserted,
     matchesUpdated: updated,
     pointsRecomputed,
+    rescoredMatchIds: needsScoringIds,
     latencyMs: Date.now() - startedAt,
   });
 
