@@ -1,5 +1,5 @@
 import { db, runBatch, schema } from "@/lib/db";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { FootballDataClient, mapStage, mapStatus, groupCode } from "./client";
 import { computeMatchPoints, refreshRankingsSnapshot } from "@/lib/scoring/compute";
 import { log } from "@/lib/observability/logger";
@@ -220,7 +220,8 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
       status === "finished" &&
       (existing.homeScore !== fields.homeScore ||
         existing.awayScore !== fields.awayScore ||
-        existing.winnerTeamId !== fields.winnerTeamId)
+        existing.winnerTeamId !== fields.winnerTeamId ||
+        existing.stage !== fields.stage)
     ) {
       needsScoringIds.push(existing.id);
     }
@@ -262,7 +263,24 @@ export async function syncWorldCupFromFootballData(apiKey: string): Promise<Sync
     );
   }
 
-  // ── 7. Compute points for newly finished matches ──
+  // ── 7. Safety net: recover unscored predictions for finished matches ──
+  // If scoring failed on a previous run (e.g. Cloudflare CPU timeout), the
+  // predictions stay points IS NULL. Detect those matches and re-queue them.
+  const unscoredRows = await db
+    .select({ matchId: schema.predictions.matchId })
+    .from(schema.predictions)
+    .innerJoin(schema.matches, eq(schema.predictions.matchId, schema.matches.id))
+    .where(and(eq(schema.matches.status, "finished"), isNull(schema.predictions.points)));
+
+  const needsScoringSet = new Set(needsScoringIds);
+  for (const row of unscoredRows) {
+    if (!needsScoringSet.has(row.matchId)) {
+      needsScoringSet.add(row.matchId);
+      needsScoringIds.push(row.matchId);
+    }
+  }
+
+  // ── 8. Compute points for newly finished matches ──
   let pointsRecomputed = 0;
   for (const mid of needsScoringIds) {
     await computeMatchPoints(mid);
