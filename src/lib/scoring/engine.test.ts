@@ -70,6 +70,23 @@ describe("scorePrediction", () => {
     expect(r.isWinnerCorrect).toBe(true);
   });
 
+  it("mata-mata: vitória no palpite sem advancingTeamId → inferir e dar bônus", () => {
+    const r = scorePrediction(
+      { homeScore: 2, awayScore: 0 },
+      koMatch(1, 0, 1),
+    );
+    expect(r.points).toBe(2);
+    expect(r.isWinnerCorrect).toBe(true);
+  });
+
+  it("mata-mata: vitória no palpite sem advancingTeamId, time errado → 0", () => {
+    const r = scorePrediction(
+      { homeScore: 0, awayScore: 1 },
+      koMatch(2, 1, 1),
+    );
+    expect(r.points).toBe(0);
+  });
+
   it("usa pesos customizados quando passados", () => {
     const r = scorePrediction(
       { homeScore: 2, awayScore: 1 },

@@ -56,8 +56,15 @@ export function scorePrediction(
     points = weights.winnerOrDraw;
   }
 
-  if (match.stage !== "group" && prediction.advancingTeamId && match.winnerTeamId) {
-    if (prediction.advancingTeamId === match.winnerTeamId && !isExact) {
+  if (match.stage !== "group" && match.winnerTeamId && !isExact) {
+    const predictedAdvancing =
+      prediction.advancingTeamId ??
+      (predictedOutcome === "home"
+        ? match.homeTeamId
+        : predictedOutcome === "away"
+          ? match.awayTeamId
+          : null);
+    if (predictedAdvancing && predictedAdvancing === match.winnerTeamId) {
       points += weights.knockoutAdvancingBonus;
     }
   }
