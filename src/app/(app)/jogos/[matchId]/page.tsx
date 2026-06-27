@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CommentsSection } from "./comments-section";
 import { brDateFormat } from "@/lib/date";
+import { stageLabel } from "@/lib/stages";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
       <Card>
         <CardHeader>
           <div className="text-sm text-brand-text-muted">
-            {row.match.stage === "group" ? `Grupo ${row.match.groupCode} · Rodada ${row.match.round}` : row.match.stage.toUpperCase()}
+            {stageLabel(row.match)}
             {" · "}
             {dateFmt.format(new Date(row.match.scheduledAt * 1000))}
           </div>

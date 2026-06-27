@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { savePrediction } from "./actions";
 import { cn } from "@/lib/utils";
 import { brDateFormat } from "@/lib/date";
+import { stageLabel, isKnockoutStage } from "@/lib/stages";
 import type { Match, Team, Prediction } from "@/lib/db/schema";
 
 interface Props {
@@ -20,25 +21,8 @@ interface Props {
 
 const DEADLINE_OFFSET_SECONDS = 15 * 60;
 
-const KNOCKOUT_STAGES = new Set(["r32", "r16", "qf", "sf", "3rd", "final"]);
-
-function stageLabel(match: Match) {
-  if (match.stage === "group") {
-    return `Grupo ${match.groupCode ?? ""} • Rodada ${match.round ?? ""}`.trim();
-  }
-  const map: Record<string, string> = {
-    r32: "Rodada de 32",
-    r16: "Oitavas de final",
-    qf: "Quartas de final",
-    sf: "Semifinal",
-    "3rd": "Disputa de 3º lugar",
-    final: "Final",
-  };
-  return map[match.stage] ?? match.stage.toUpperCase();
-}
-
 export function MatchCard({ match, home, away, prediction, advancingTeam }: Props) {
-  const isKnockout = KNOCKOUT_STAGES.has(match.stage);
+  const isKnockout = isKnockoutStage(match.stage);
   const hasTeams = home != null && away != null;
   const isFinished = match.status === "finished";
   const hasResult = isFinished && match.homeScore != null && match.awayScore != null;
@@ -143,7 +127,7 @@ export function MatchCard({ match, home, away, prediction, advancingTeam }: Prop
           ) : (
             <span className="h-5 w-7 rounded-sm bg-brand-surface-2 shrink-0" />
           )}
-          <span className="font-medium truncate text-sm sm:text-base">{home?.namePt ?? "—"}</span>
+          <span className="font-medium truncate text-sm sm:text-base">{home?.namePt ?? (isKnockout ? "A definir" : "—")}</span>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
@@ -155,15 +139,15 @@ export function MatchCard({ match, home, away, prediction, advancingTeam }: Prop
             </>
           ) : (
             <>
-              <ScoreInput value={homeScore} onChange={setHomeScore} disabled={isLocked} label={`Placar ${home?.namePt ?? "casa"}`} />
+              <ScoreInput value={homeScore} onChange={setHomeScore} disabled={isLocked || !hasTeams} label={`Placar ${home?.namePt ?? "casa"}`} />
               <span className="text-brand-text-muted text-sm">x</span>
-              <ScoreInput value={awayScore} onChange={setAwayScore} disabled={isLocked} label={`Placar ${away?.namePt ?? "fora"}`} />
+              <ScoreInput value={awayScore} onChange={setAwayScore} disabled={isLocked || !hasTeams} label={`Placar ${away?.namePt ?? "fora"}`} />
             </>
           )}
         </div>
 
         <div className="flex items-center gap-2.5 justify-end min-w-0">
-          <span className="font-medium truncate text-right text-sm sm:text-base">{away?.namePt ?? "—"}</span>
+          <span className="font-medium truncate text-right text-sm sm:text-base">{away?.namePt ?? (isKnockout ? "A definir" : "—")}</span>
           {away?.flagUrl ? (
             <Image src={away.flagUrl} alt="" width={28} height={20} className="rounded-sm shrink-0 shadow-sm" />
           ) : (
@@ -198,6 +182,12 @@ export function MatchCard({ match, home, away, prediction, advancingTeam }: Prop
       {isKnockout && hasResult && match.winnerTeamId && (
         <div className="mt-2.5 text-xs text-brand-primary font-medium text-center">
           Classificou: {match.winnerTeamId === home?.id ? home.namePt : away?.namePt}
+        </div>
+      )}
+
+      {isKnockout && !hasTeams && !hasResult && (
+        <div className="mt-3 text-xs text-brand-text-muted text-center italic">
+          Aguardando definição dos confrontos
         </div>
       )}
 

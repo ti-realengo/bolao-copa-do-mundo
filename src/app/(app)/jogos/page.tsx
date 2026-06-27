@@ -11,16 +11,13 @@ import { GroupSelect } from "./group-select";
 import { FilterSelect } from "./filter-select";
 import { cn } from "@/lib/utils";
 import { brDateKey, brDateFormat } from "@/lib/date";
+import { KNOCKOUT_STAGES } from "@/lib/stages";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   searchParams: Promise<{ filter?: string; group?: string }>;
 }
-
-
-
-const KNOCKOUT_STAGES = ["r32", "r16", "qf", "sf", "3rd", "final"];
 
 export default async function JogosPage({ searchParams }: PageProps) {
   const session = await getCurrentSession();

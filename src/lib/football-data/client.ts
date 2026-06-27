@@ -7,8 +7,8 @@ export interface FdMatch {
   matchday: number;
   stage: string;
   group: string | null;
-  homeTeam: { id: number; name: string; shortName: string; tla: string; crest: string | null };
-  awayTeam: { id: number; name: string; shortName: string; tla: string; crest: string | null };
+  homeTeam: { id: number | null; name: string | null; shortName: string | null; tla: string | null; crest: string | null };
+  awayTeam: { id: number | null; name: string | null; shortName: string | null; tla: string | null; crest: string | null };
   score: {
     winner: "HOME_TEAM" | "AWAY_TEAM" | "DRAW" | null;
     duration: "REGULAR" | "EXTRA_TIME" | "PENALTY_SHOOTOUT";
@@ -69,8 +69,9 @@ export class FootballDataClient {
 export function mapStage(fdStage: string): string {
   const map: Record<string, string> = {
     GROUP_STAGE: "group",
-    LAST_16: "r16",
+    LAST_32: "r32",
     ROUND_OF_32: "r32",
+    LAST_16: "r16",
     QUARTER_FINALS: "qf",
     SEMI_FINALS: "sf",
     THIRD_PLACE: "3rd",

@@ -48,11 +48,11 @@ async function main() {
   const teamMap = new Map<number, { tla: string; name: string; crest: string | null; group: string | null }>();
   for (const m of data.matches) {
     const grp = groupCode(m.group);
-    if (!teamMap.has(m.homeTeam.id)) {
-      teamMap.set(m.homeTeam.id, { tla: m.homeTeam.tla, name: m.homeTeam.name, crest: m.homeTeam.crest, group: grp });
+    if (m.homeTeam.id != null && !teamMap.has(m.homeTeam.id)) {
+      teamMap.set(m.homeTeam.id, { tla: m.homeTeam.tla ?? "", name: m.homeTeam.name ?? "", crest: m.homeTeam.crest, group: grp });
     }
-    if (!teamMap.has(m.awayTeam.id)) {
-      teamMap.set(m.awayTeam.id, { tla: m.awayTeam.tla, name: m.awayTeam.name, crest: m.awayTeam.crest, group: grp });
+    if (m.awayTeam.id != null && !teamMap.has(m.awayTeam.id)) {
+      teamMap.set(m.awayTeam.id, { tla: m.awayTeam.tla ?? "", name: m.awayTeam.name ?? "", crest: m.awayTeam.crest, group: grp });
     }
   }
 
@@ -89,12 +89,8 @@ async function main() {
   let updated = 0;
   for (const m of data.matches) {
     const externalId = String(m.id);
-    const homeId = teamByExternal.get(m.homeTeam.id);
-    const awayId = teamByExternal.get(m.awayTeam.id);
-    if (!homeId || !awayId) {
-      console.warn(`! sem time para match ${m.id}, pulando`);
-      continue;
-    }
+    const homeId = m.homeTeam.id != null ? teamByExternal.get(m.homeTeam.id) ?? null : null;
+    const awayId = m.awayTeam.id != null ? teamByExternal.get(m.awayTeam.id) ?? null : null;
     const scheduledAt = Math.floor(new Date(m.utcDate).getTime() / 1000);
     const stage = mapStage(m.stage);
     const status = mapStatus(m.status);

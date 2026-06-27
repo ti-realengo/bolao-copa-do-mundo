@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { Card } from "@/components/ui/card";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -10,10 +11,11 @@ const ROUNDS = [
   { value: "group-1", label: "Rodada 1", stage: "group", round: 1 },
   { value: "group-2", label: "Rodada 2", stage: "group", round: 2 },
   { value: "group-3", label: "Rodada 3", stage: "group", round: 3 },
+  { value: "r32", label: "16 Avos-de-final", stage: "r32", round: null },
   { value: "r16", label: "Oitavas de final", stage: "r16", round: null },
   { value: "qf", label: "Quartas de final", stage: "qf", round: null },
   { value: "sf", label: "Semifinais", stage: "sf", round: null },
-  { value: "3rd", label: "3º lugar", stage: "3rd", round: null },
+  { value: "3rd", label: "3º Lugar", stage: "3rd", round: null },
   { value: "final", label: "Final", stage: "final", round: null },
 ] as const;
 
@@ -67,20 +69,28 @@ export default async function RankingRodadaPage({ searchParams }: PageProps) {
         <p className="text-brand-text-muted mt-1">Pontuação filtrada por fase da competição.</p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {ROUNDS.map((r) => (
-          <a
-            key={r.value}
-            href={`/ranking/rodada?rodada=${r.value}`}
-            className={`rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors ${
-              r.value === selected
-                ? "border-brand-primary/40 bg-brand-primary/12 text-brand-primary"
-                : "border-brand-border bg-brand-card text-brand-text-muted hover:border-brand-border-strong hover:text-brand-text"
-            }`}
-          >
-            {r.label}
-          </a>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {ROUNDS.map((r) => (
+            <a
+              key={r.value}
+              href={`/ranking/rodada?rodada=${r.value}`}
+              className={`rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors ${
+                r.value === selected
+                  ? "border-brand-primary/40 bg-brand-primary/12 text-brand-primary"
+                  : "border-brand-border bg-brand-card text-brand-text-muted hover:border-brand-border-strong hover:text-brand-text"
+              }`}
+            >
+              {r.label}
+            </a>
+          ))}
+        </div>
+        <Link
+          href="/ranking/especiais"
+          className="rounded-xl border border-brand-border bg-brand-card px-4 py-1.5 text-sm font-medium text-brand-text-muted hover:border-brand-border-strong hover:text-brand-text transition-colors"
+        >
+          Palpites Especiais
+        </Link>
       </div>
 
       {ranked.length > 0 ? (

@@ -8,28 +8,12 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { cn } from "@/lib/utils";
 import { brDateKey, brDateFormat } from "@/lib/date";
+import { KNOCKOUT_STAGES, stageLabel } from "@/lib/stages";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   searchParams: Promise<{ filter?: string }>;
-}
-
-const KNOCKOUT_STAGES = ["r32", "r16", "qf", "sf", "3rd", "final"];
-
-function stageLabel(match: { stage: string; groupCode: string | null; round: number | null }) {
-  if (match.stage === "group") {
-    return `Grupo ${match.groupCode ?? ""} • Rodada ${match.round ?? ""}`.trim();
-  }
-  const map: Record<string, string> = {
-    r32: "Rodada de 32",
-    r16: "Oitavas de final",
-    qf: "Quartas de final",
-    sf: "Semifinal",
-    "3rd": "Disputa de 3º lugar",
-    final: "Final",
-  };
-  return map[match.stage] ?? match.stage.toUpperCase();
 }
 
 export default async function HistoricoPage({ searchParams }: PageProps) {

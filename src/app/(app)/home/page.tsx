@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BADGES } from "@/lib/badges/catalog";
 import { getMessages, t as tFn } from "@/lib/i18n";
 import { brDateFormat } from "@/lib/date";
+import { stageLabel } from "@/lib/stages";
 
 export const dynamic = "force-dynamic";
 
@@ -100,7 +101,7 @@ export default async function HomePage() {
                   <TeamSide name={nextMatch.home?.namePt ?? "—"} flag={nextMatch.home?.flagUrl ?? null} align="left" />
                   <div className="text-center shrink-0">
                     <div className="text-xs text-brand-text-muted uppercase">
-                      {nextMatch.match.stage === "group" ? `Grupo ${nextMatch.match.groupCode}` : nextMatch.match.stage}
+                      {stageLabel(nextMatch.match)}
                     </div>
                     <div className="font-mono text-2xl font-bold mt-1">VS</div>
                     <div className="text-xs text-brand-text-muted mt-1">
