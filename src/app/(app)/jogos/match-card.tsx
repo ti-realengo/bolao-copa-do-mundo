@@ -39,6 +39,9 @@ export function MatchCard({ match, home, away, prediction, advancingTeam }: Prop
   const now = Math.floor(Date.now() / 1000);
   const isLocked = now > match.scheduledAt - DEADLINE_OFFSET_SECONDS || match.status !== "scheduled";
 
+  const isDrawPrediction =
+    homeScore !== "" && awayScore !== "" && Number(homeScore) === Number(awayScore);
+
   useEffect(() => {
     if (homeScore === "" || awayScore === "") return;
     if (isLocked) return;
@@ -63,7 +66,7 @@ export function MatchCard({ match, home, away, prediction, advancingTeam }: Prop
           matchId: match.id,
           homeScore: h,
           awayScore: a,
-          advancingTeamId: isKnockout ? advId : null,
+          advancingTeamId: isKnockout && h === a ? advId : null,
         });
         setStatus(res.ok ? "saved" : "error");
         if (res.ok) setTimeout(() => setStatus("idle"), 1500);
@@ -74,6 +77,13 @@ export function MatchCard({ match, home, away, prediction, advancingTeam }: Prop
       if (timer.current) clearTimeout(timer.current);
     };
   }, [homeScore, awayScore, advancingTeamId, isKnockout, isLocked, match.id, prediction]);
+
+  useEffect(() => {
+    if (!isKnockout) return;
+    if (homeScore !== "" && awayScore !== "" && Number(homeScore) !== Number(awayScore) && advancingTeamId !== "") {
+      setAdvancingTeamId("");
+    }
+  }, [homeScore, awayScore, isKnockout, advancingTeamId]);
 
   const dateFmt = brDateFormat({
     hour: "2-digit",
@@ -156,10 +166,10 @@ export function MatchCard({ match, home, away, prediction, advancingTeam }: Prop
         </div>
       </div>
 
-      {isKnockout && hasTeams && !hasResult && (
+      {isKnockout && hasTeams && !hasResult && isDrawPrediction && (
         <div className="mt-3">
           <label className="text-xs text-brand-text-muted block mb-1.5">
-            Quem passa? {isLocked ? "(trancado)" : ""}
+            Empate em 90 min — quem passa? {isLocked ? "(trancado)" : ""}
           </label>
           <select
             value={advancingTeamId}
