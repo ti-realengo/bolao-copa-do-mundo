@@ -1,5 +1,5 @@
 import { db, runBatch, schema } from "@/lib/db";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { scorePrediction } from "./engine";
 import { recomputeAllSpecials, getStoredSpecialPoints } from "./specials";
 import { loadScoringConfig } from "./config";
@@ -126,25 +126,49 @@ export async function refreshRankingsSnapshot(
       : null,
   }));
 
-  await db.delete(schema.rankingsSnapshot);
-
-  // Use runBatch with individual INSERTs to avoid D1's ~100 bind-variable limit
-  // per statement (multi-row INSERT with 50 rows × 8 cols = 400 variables would fail).
+  // Use upsert (INSERT ... ON CONFLICT DO UPDATE) instead of DELETE + INSERT.
+  // This way, if the Worker crashes mid-operation, the previous ranking data
+  // survives — it's never wiped without a replacement being written first.
   for (const batch of chunk(ranked, BATCH_CHUNK)) {
     await runBatch(
       batch.map((e) =>
-        db.insert(schema.rankingsSnapshot).values({
-          userId: e.userId,
-          totalPoints: e.totalPoints,
-          exactCount: e.exactCount,
-          winnerCount: e.winnerCount,
-          specialPoints: e.specialPoints,
-          position: e.position,
-          positionChange: e.positionChange,
-          updatedAt: now,
-        }),
+        db
+          .insert(schema.rankingsSnapshot)
+          .values({
+            userId: e.userId,
+            totalPoints: e.totalPoints,
+            exactCount: e.exactCount,
+            winnerCount: e.winnerCount,
+            specialPoints: e.specialPoints,
+            position: e.position,
+            positionChange: e.positionChange,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: schema.rankingsSnapshot.userId,
+            set: {
+              totalPoints: sql`excluded.total_points`,
+              exactCount: sql`excluded.exact_count`,
+              winnerCount: sql`excluded.winner_count`,
+              specialPoints: sql`excluded.special_points`,
+              position: sql`excluded.position`,
+              positionChange: sql`excluded.position_change`,
+              updatedAt: sql`excluded.updated_at`,
+            },
+          }),
       ),
     );
+  }
+
+  // Remove rows for users no longer in the active set (deleted accounts).
+  // Run AFTER upsert so the table is never empty even if the Worker crashes.
+  const activeUserIds = ranked.map((r) => r.userId);
+  if (activeUserIds.length > 0) {
+    await db
+      .delete(schema.rankingsSnapshot)
+      .where(notInArray(schema.rankingsSnapshot.userId, activeUserIds));
+  } else {
+    await db.delete(schema.rankingsSnapshot);
   }
 
   log.info("scoring.refreshRankingsSnapshot.done", { userCount: entries.length });
