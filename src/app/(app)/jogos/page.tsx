@@ -4,7 +4,7 @@ import { TrendingUp, ArrowRight, ChevronDown } from "lucide-react";
 import { db, schema } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { MatchCard } from "./match-card";
 import { GroupSelect } from "./group-select";
@@ -56,7 +56,7 @@ export default async function JogosPage({ searchParams }: PageProps) {
     const teams = await db
       .select()
       .from(schema.teams)
-      .where(sql`${schema.teams.id} in (${Array.from(teamIds)})`);
+      .where(inArray(schema.teams.id, Array.from(teamIds)));
     advancingTeams = new Map(teams.map((t) => [t.id, t]));
   }
 

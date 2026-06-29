@@ -4,7 +4,7 @@ import { CheckCircle2, MinusCircle, Trophy, TrendingUp, Target } from "lucide-re
 import { db, schema } from "@/lib/db";
 import { getCurrentSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { cn } from "@/lib/utils";
 import { brDateKey, brDateFormat } from "@/lib/date";
@@ -54,7 +54,7 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
     const teams = await db
       .select()
       .from(schema.teams)
-      .where(sql`${schema.teams.id} in (${Array.from(teamIds)})`);
+      .where(inArray(schema.teams.id, Array.from(teamIds)));
     advancingTeams = new Map(teams.map((t) => [t.id, t]));
   }
 
