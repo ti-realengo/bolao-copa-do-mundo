@@ -126,8 +126,12 @@ async function main() {
       awayScore,
       homeScoreEt: m.score.extraTime?.home ?? null,
       awayScoreEt: m.score.extraTime?.away ?? null,
-      homeScorePen: m.score.penalties?.home ?? null,
-      awayScorePen: m.score.penalties?.away ?? null,
+      homeScorePen: isShootout
+        ? Math.max(0, (m.score.fullTime.home ?? 0) - (m.score.regularTime?.home ?? 0) - (m.score.extraTime?.home ?? 0))
+        : null,
+      awayScorePen: isShootout
+        ? Math.max(0, (m.score.fullTime.away ?? 0) - (m.score.regularTime?.away ?? 0) - (m.score.extraTime?.away ?? 0))
+        : null,
       winnerTeamId,
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
