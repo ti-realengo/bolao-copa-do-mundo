@@ -97,6 +97,23 @@ async function main() {
     const grp = groupCode(m.group);
 
     const existing = db.select().from(schema.matches).where(eq(schema.matches.externalId, externalId)).all();
+
+    const isShootout = m.score.duration === "PENALTY_SHOOTOUT";
+    const homeScore = isShootout
+      ? (m.score.regularTime?.home ?? 0) + (m.score.extraTime?.home ?? 0)
+      : m.score.fullTime.home;
+    const awayScore = isShootout
+      ? (m.score.regularTime?.away ?? 0) + (m.score.extraTime?.away ?? 0)
+      : m.score.fullTime.away;
+
+    let winnerTeamId: number | null = null;
+    if (m.score.winner === "HOME_TEAM") winnerTeamId = homeId;
+    else if (m.score.winner === "AWAY_TEAM") winnerTeamId = awayId;
+    else if (isShootout && m.score.fullTime.home != null && m.score.fullTime.away != null) {
+      if (m.score.fullTime.home > m.score.fullTime.away) winnerTeamId = homeId;
+      else if (m.score.fullTime.away > m.score.fullTime.home) winnerTeamId = awayId;
+    }
+
     const fields = {
       stage,
       groupCode: grp,
@@ -105,13 +122,13 @@ async function main() {
       awayTeamId: awayId,
       scheduledAt,
       status,
-      homeScore: m.score.fullTime.home,
-      awayScore: m.score.fullTime.away,
+      homeScore,
+      awayScore,
       homeScoreEt: m.score.extraTime?.home ?? null,
       awayScoreEt: m.score.extraTime?.away ?? null,
       homeScorePen: m.score.penalties?.home ?? null,
       awayScorePen: m.score.penalties?.away ?? null,
-      winnerTeamId: m.score.winner === "HOME_TEAM" ? homeId : m.score.winner === "AWAY_TEAM" ? awayId : null,
+      winnerTeamId,
       finishedAt: m.status === "FINISHED" ? Math.floor(new Date(m.lastUpdated).getTime() / 1000) : null,
     };
     if (existing.length > 0) {

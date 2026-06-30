@@ -9,6 +9,7 @@ import { alias } from "drizzle-orm/sqlite-core";
 import { cn } from "@/lib/utils";
 import { brDateKey, brDateFormat } from "@/lib/date";
 import { KNOCKOUT_STAGES, stageLabel } from "@/lib/stages";
+import { PenaltiesBadge } from "@/components/match-score";
 
 export const dynamic = "force-dynamic";
 
@@ -244,6 +245,9 @@ export default async function HistoricoPage({ searchParams }: PageProps) {
                         {r.match.awayScore ?? "-"}
                       </span>
                     </div>
+                    {r.match.homeScorePen != null && (
+                      <PenaltiesBadge match={r.match} variant="inline" className="ml-1" />
+                    )}
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">

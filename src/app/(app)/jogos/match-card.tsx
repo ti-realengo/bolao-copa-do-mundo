@@ -9,6 +9,7 @@ import { savePrediction } from "./actions";
 import { cn } from "@/lib/utils";
 import { brDateFormat } from "@/lib/date";
 import { stageLabel, isKnockoutStage } from "@/lib/stages";
+import { PenaltiesBadge } from "@/components/match-score";
 import type { Match, Team, Prediction } from "@/lib/db/schema";
 
 interface Props {
@@ -193,6 +194,10 @@ export function MatchCard({ match, home, away, prediction, advancingTeam }: Prop
         <div className="mt-2.5 text-xs text-brand-primary font-medium text-center">
           Classificou: {match.winnerTeamId === home?.id ? home.namePt : away?.namePt}
         </div>
+      )}
+
+      {hasResult && match.homeScorePen != null && (
+        <PenaltiesBadge match={match} variant="block" className="mt-1" />
       )}
 
       {isKnockout && !hasTeams && !hasResult && (

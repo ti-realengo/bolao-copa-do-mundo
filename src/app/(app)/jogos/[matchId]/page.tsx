@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CommentsSection } from "./comments-section";
 import { brDateFormat } from "@/lib/date";
 import { stageLabel } from "@/lib/stages";
+import { PenaltiesBadge, ExtraTimeBadge } from "@/components/match-score";
 
 export const dynamic = "force-dynamic";
 
@@ -63,8 +64,15 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ ma
         </CardHeader>
         <CardContent className="text-center">
           {row.match.status === "finished" && row.match.homeScore != null ? (
-            <div className="text-4xl font-display font-bold font-mono">
-              {row.match.homeScore} – {row.match.awayScore}
+            <div className="space-y-1">
+              <div className="text-4xl font-display font-bold font-mono">
+                {row.match.homeScore} – {row.match.awayScore}
+              </div>
+              {row.match.homeScorePen != null ? (
+                <PenaltiesBadge match={row.match} variant="block" />
+              ) : row.match.homeScoreEt != null ? (
+                <ExtraTimeBadge />
+              ) : null}
             </div>
           ) : row.match.status === "live" ? (
             <div className="text-brand-primary font-semibold">AO VIVO {row.match.homeScore ?? 0}–{row.match.awayScore ?? 0}</div>

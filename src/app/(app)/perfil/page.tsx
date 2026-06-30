@@ -15,6 +15,7 @@ import { ShareRankButton } from "./share-button";
 import { DangerZone } from "./danger-zone";
 import { LanguageSwitcher } from "./language-switcher";
 import { getLocale, getMessages } from "@/lib/i18n";
+import { PenaltiesBadge } from "@/components/match-score";
 
 export const dynamic = "force-dynamic";
 
@@ -221,6 +222,9 @@ export default async function PerfilPage() {
                       {h.match.status === "finished" && h.match.homeScore != null
                         ? `${h.match.homeScore}–${h.match.awayScore}`
                         : "—"}
+                      {h.match.homeScorePen != null && (
+                        <PenaltiesBadge match={h.match} variant="inline" className="ml-1" />
+                      )}
                     </td>
                     <td className="px-4 py-2 text-right font-mono">
                       {h.prediction.points == null ? "—" : (
